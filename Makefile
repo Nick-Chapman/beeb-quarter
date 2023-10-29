@@ -1,7 +1,7 @@
 
 top: build-all
 
-run: _build run-key-emit-loop
+run: _build run-kernel
 
 units = $(patsubst src/%.asm, %, $(wildcard src/*.asm))
 ssds = $(patsubst %, _build/%.ssd, $(units))
