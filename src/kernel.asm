@@ -18,6 +18,7 @@ macro puts message
 endmacro
 
 macro stop message
+    jsr _cr
     puts message
     jmp spin
 endmacro
@@ -37,26 +38,11 @@ endmacro
 ;; TODO: add PS overflow check
 PS = &90 ; Was 0. Bad interaction with osasci
 
-macro pushA ; hi-byte then lo-byte
-    dex
-	sta PS, x
-endmacro
-
-macro popA ; lo-byte then hi-byte
-	lda PS, x
-    inx
-endmacro
-
-macro commaHereY ; Y needs to be set
-    sta (herePtr),y
-    incWord herePtr
-endmacro
-
 guard &10
 org &0
 
-.temp skip 2 ; used by _lit
 .herePtr skip 2
+.temp skip 2 ; used by _lit
 .embeddedPtr skip 2
 .msgPtr skip 2
 
@@ -76,11 +62,11 @@ org kernelStart
 
 .writeChar: { ; converting asci 10-->13
     cmp #10
-    beq ten
-    jmp oswrch
-.ten:
+    bne ok
     lda #13
-    jmp osasci }
+.ok:
+    jmp osasci ; has special handling for 13 -> NL
+    }
 
 .print_message: { ; just for dev; used by stop/puts
     tya : pha
@@ -111,7 +97,17 @@ org kernelStart
 
 ._cr:
     lda #13
-    jmp oswrch
+    jmp osasci
+
+macro pushA ; hi-byte then lo-byte
+    dex
+	sta PS, x
+endmacro
+
+macro popA ; lo-byte then hi-byte
+	lda PS, x
+    inx
+endmacro
 
 ._dup:
     dex : dex
@@ -119,6 +115,72 @@ org kernelStart
     sta PS+0, x
     lda PS+3, x
     sta PS+1, x
+    rts
+
+._swap:
+    ldy PS+0, x
+    lda PS+2, x
+    sty PS+2, x
+    sta PS+0, x
+    ldy PS+1, x
+    lda PS+3, x
+    sty PS+3, x
+    sta PS+1, x
+    rts
+
+._minus: ;; PH PL - QH QL
+    sec
+    lda PS+2, x ; PL
+    sbc PS+0, x ; QL
+    sta PS+2, x
+    lda PS+3, x ; PH
+    sbc PS+1, x ; QH
+    sta PS+3, x
+    inx : inx
+    rts
+
+._equal: { ;; PH PL = QH QL
+    lda PS+2, x ; PL
+    cmp PS+0, x ; QL
+    bne diff
+    lda PS+3, x ; PH
+    cmp PS+1, x ; QH
+    bne diff
+.same:
+    lda #&ff ; true
+    jmp store
+.diff:
+    lda #0 ; false
+.store:
+    sta PS+2, x
+    sta PS+3, x
+    inx : inx
+    rts }
+
+._fetch: ; ( addr -- value )
+	lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+    ldy #0
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #1
+    lda (temp),y
+	sta PS+1, x ; hi-value
+    rts
+
+._store: ; ( value addr -- )
+    popA ;lo-addr
+    sta temp
+    popA ;hi-addr
+    sta temp+1
+    popA ;lo-value
+    ldy #0
+    sta (temp),y
+    popA ;hi-value
+    ldy #1
+    sta (temp),y
     rts
 
 ._emit:
@@ -136,7 +198,7 @@ org kernelStart
     rts
 
 .key_indirect: {
-    jmp (indirection) ; TODO: prefer self-modifying code
+    jmp (indirection) ; TODO: prefer SMC
 .indirection:
     equw initial
 .initial:
@@ -151,20 +213,15 @@ org kernelStart
     jmp osrdch
     }
 
+._exit:
+    pla
+    pla
+    rts
 
 ._jump:
     pla
     pla
     jmp _execute
-
-;; ._execute: {
-;;     popA ;lo
-;;     sta indirection
-;;     popA ;hi
-;;     sta indirection+1
-;;     jmp (indirection)
-;; .indirection
-;;     equw 0 }
 
 ._execute: {
     popA ;lo
@@ -173,6 +230,17 @@ org kernelStart
     sta mod+2
     .mod jmp 0
     }
+
+macro commaHereY ; Y needs to be set
+    sta (herePtr),y
+    incWord herePtr
+endmacro
+
+._write_ret:
+    lda #rtsOpCode
+    ldy #0
+    commaHereY
+    rts
 
 ._compile_comma:
     lda #jsrOpCode
@@ -185,25 +253,15 @@ org kernelStart
     rts
 
 ._comma:
+    jsr _c_comma
+    commaHereY ; the only extra thing
+    rts
+
+._c_comma:
     ldy #0
     popA ;lo
     commaHereY
     popA ;hi
-    commaHereY
-    rts
-
-._write_ret:
-    lda #rtsOpCode
-    ldy #0
-    sta (herePtr),y
-    incWord herePtr
-    rts
-
-._here:
-    lda herePtr+1
-    pushA ;hi
-    lda herePtr
-    pushA ;lo
     rts
 
 ._lit:
@@ -225,13 +283,50 @@ org kernelStart
     pha
     rts
 
+._branch0:
+    popA
+    inx
+    ora PS-1, x
+    bne untaken
+
+.taken:
+    pla
+    sta temp
+    pla
+    sta temp+1
+	;; TODO: branch the correct distance! instead of hacking to be 5 !
+    incWord temp
+    incWord temp
+    incWord temp
+    incWord temp
+    incWord temp
+    lda temp+1
+    pha
+    lda temp
+    pha
+    rts
+    rts
+
+.untaken:
+    pla
+    sta temp
+    pla
+    sta temp+1
+    incWord temp
+    incWord temp
+    lda temp+1
+    pha
+    lda temp
+    pha
+    rts
+
 ._set_dispatch_table:
     jsr _key
     popA ;lo
     asl a
     tay
     popA ;hi
-    jsr _here
+    jsr _here_pointer
     popA ;lo
     sta dispatch_table,y
     popA ;hi
@@ -251,12 +346,31 @@ org kernelStart
 	ora PS+1, x
     beq unset
     rts
-.unset
-    lda #'(' : jsr oswrch
+.unset:
+    jsr _cr
     .mod lda #0 : jsr oswrch
-    lda #')' : jsr oswrch
-    stop "unset"
+    lda #'?' : jsr oswrch
+    jmp spin
     }
+
+._zero:
+    lda #0
+    pushA
+    pushA
+    rts
+
+._here_pointer:
+    lda herePtr+1
+    pushA ;hi
+    lda herePtr
+    pushA ;lo
+    rts
+
+._entry:
+    ;; TODO: create the dictinary entry
+    popA
+    popA
+    rts
 
 print "kernel size (sans dispatch table): ", *-start
 
@@ -298,7 +412,7 @@ equw U ; 1e
 equw U ; 1f
 
 equw _nop ; 20 space
-equw U ; 21 !
+equw _store ; 21 !
 equw U ; 22 "
 equw U ; 23 #
 equw U ; 24 $
@@ -310,11 +424,11 @@ equw U ; 29 )
 equw U ; 2a *
 equw U ; 2b +
 equw _comma ; 2c ,
-equw U ; 2d -
+equw _minus ; 2d -
 equw _emit ; 2e .
 equw U ; 2f /
 
-equw U ; 30 0
+equw _zero ; 30 0
 equw U ; 31 1
 equw U ; 32 2
 equw U ; 33 3
@@ -327,19 +441,19 @@ equw U ; 39 9
 equw _set_dispatch_table ; 3a :
 equw _write_ret ; 3b ;
 equw U ; 3c <
-equw U ; 3d =
+equw _equal ; 3d =
 equw _compile_comma ; 3e >
 equw _dispatch ; 3f ?
 
-equw U ; 40 @
+equw _fetch ; 40 @
 equw U ; 41 A
-equw U ; 42 B
+equw _branch0 ; 42 B
 equw U ; 43 C
 equw _dup ; 44 D
-equw U ; 45 E
+equw _entry ; 45 E
 equw U ; 46 F
 equw U ; 47 G
-equw U ; 48 H
+equw _here_pointer ; 48 H
 equw U ; 49 I
 equw _jump ; 4a J
 equw U ; 4b K
@@ -355,8 +469,8 @@ equw U ; 53 S
 equw U ; 54 T
 equw U ; 55 U
 equw _execute ; 56 V
-equw U ; 57 W
-equw U ; 58 X
+equw _swap ; 57 W
+equw _exit ; 58 X
 equw U ; 59 Y
 equw U ; 5a Z
 equw U ; 5b [
@@ -365,7 +479,7 @@ equw U ; 5d ]
 equw _key ; 5e ^
 equw U ; 5f _
 
-equw U ; 60 `
+equw _c_comma ; 60 `
 equw U ; 61 a
 equw U ; 62 b
 equw U ; 63 c
@@ -402,8 +516,8 @@ equw U ; 7f DEL
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
-print "kernel size: ", *-start
-print "bytes left (after kernel): ", screenStart-*
+;print "kernel size: ", *-start
+;print "bytes left (after kernel): ", screenStart-*
 
 .here_start:
 
@@ -412,8 +526,8 @@ print "bytes left (after kernel): ", screenStart-*
     incbin "../quarter-forth/f/quarter.q"
     equb 0
 
-print "embedded size: ", *-embedded
-print "bytes left (after embedded): ", screenStart-*
+;print "embedded size: ", *-embedded
+;print "bytes left (after embedded): ", screenStart-*
 
 .end:
 
