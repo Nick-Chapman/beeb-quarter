@@ -11,7 +11,7 @@ build-all: _build $(ssds)
 run-%: _build/%.ssd
 	b-em $<
 
-_build/%.ssd: src/%.asm Makefile play.q
+_build/%.ssd: src/%.asm Makefile play.q ../quarter-forth/f/quarter.q
 	@ echo Building $<
 	@ beebasm -w -i $< -do $@ -boot Code || rm $@
 

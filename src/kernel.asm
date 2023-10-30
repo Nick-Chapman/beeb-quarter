@@ -3,7 +3,8 @@ jsrOpCode = &20
 rtsOpCode = &60
 
 osrdch = &ffe0
-oswrch = &ffe3
+osasci = &ffe3
+oswrch = &ffee
 
 kernelStart = &1900 ;; 1100 NO, 1200 OK
 screenStart = &3000
@@ -33,13 +34,16 @@ macro incWord V
 .done:
 endmacro
 
+;; TODO: add PS overflow check
+PS = &90 ; Was 0. Bad interaction with osasci
+
 macro pushA ; hi-byte then lo-byte
     dex
-	sta 0, x
+	sta PS, x
 endmacro
 
 macro popA ; lo-byte then hi-byte
-	lda 0, x
+	lda PS, x
     inx
 endmacro
 
@@ -65,18 +69,18 @@ org kernelStart
 .cls:
     lda #22 : jsr oswrch
     lda #7 : jsr oswrch
-    .rts rts
+    rts
 
 .spin:
     jmp spin
 
-.writeChar: { ;; mapping 10 --> 13
+.writeChar: { ; converting asci 10-->13
     cmp #10
-    bne ok
-    clc : adc #3
-.ok:
+    beq ten
     jmp oswrch
-    }
+.ten:
+    lda #13
+    jmp osasci }
 
 .print_message: { ; just for dev; used by stop/puts
     tya : pha
@@ -84,7 +88,7 @@ org kernelStart
 .loop
     lda (msgPtr),y
     beq done
-    jsr oswrch
+    jsr osasci
     iny
     bne loop
 .done:
@@ -111,10 +115,10 @@ org kernelStart
 
 ._dup:
     dex : dex
-    lda 2, x
-    sta 0, x
-    lda 3, x
-    sta 1, x
+    lda PS+2, x
+    sta PS+0, x
+    lda PS+3, x
+    sta PS+1, x
     rts
 
 ._emit:
@@ -123,15 +127,16 @@ org kernelStart
 	popA ;hi
     rts
 
-._key: {
+._key:
     lda #0
     pushA ;hi
-    jsr indirect
+    jsr key_indirect
     pushA ;lo
-    ;jmp writeChar; echo
+    jsr writeChar ; echo
     rts
-.indirect:
-    jmp (indirection)
+
+.key_indirect: {
+    jmp (indirection) ; TODO: prefer self-modifying code
 .indirection:
     equw initial
 .initial:
@@ -146,19 +151,28 @@ org kernelStart
     jmp osrdch
     }
 
+
 ._jump:
     pla
     pla
     jmp _execute
 
+;; ._execute: {
+;;     popA ;lo
+;;     sta indirection
+;;     popA ;hi
+;;     sta indirection+1
+;;     jmp (indirection)
+;; .indirection
+;;     equw 0 }
+
 ._execute: {
     popA ;lo
-    sta indirection
+    sta mod+1
     popA ;hi
-    sta indirection+1
-    jmp (indirection)
-.indirection
-    equw 0 }
+    sta mod+2
+    .mod jmp 0
+    }
 
 ._compile_comma:
     lda #jsrOpCode
@@ -226,7 +240,7 @@ org kernelStart
 
 ._dispatch: {
     popA ;lo
-    sta saved+1
+    sta mod+1
     asl a
     tay
     popA ;hi
@@ -234,12 +248,12 @@ org kernelStart
     pushA ;hi
     lda dispatch_table,y
     pushA ;lo
-	ora 1, x
+	ora PS+1, x
     beq unset
     rts
 .unset
     lda #'(' : jsr oswrch
-    .saved : lda #0 : jsr oswrch
+    .mod lda #0 : jsr oswrch
     lda #')' : jsr oswrch
     stop "unset"
     }
@@ -394,7 +408,8 @@ print "bytes left (after kernel): ", screenStart-*
 .here_start:
 
 .embedded:
-    incbin "play.q"
+    ;incbin "play.q"
+    incbin "../quarter-forth/f/quarter.q"
     equb 0
 
 print "embedded size: ", *-embedded
