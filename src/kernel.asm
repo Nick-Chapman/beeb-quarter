@@ -1,4 +1,13 @@
 
+jsrOpCode = &20
+rtsOpCode = &60
+
+osrdch = &ffe0
+oswrch = &ffe3
+
+kernelStart = &1900 ;; 1100 NO, 1200 OK
+screenStart = &3000
+
 macro puts message
     copy16i msg, msgPtr
     jmp after
@@ -17,8 +26,7 @@ macro copy16i I,V
     lda #HI(I) : sta V+1
 endmacro
 
-;; TODO: allow naming as inc16
-macro xinc16 V
+macro incWord V
     inc V
     bne done
     inc V+1
@@ -37,38 +45,40 @@ endmacro
 
 macro commaHereY ; Y needs to be set
     sta (herePtr),y
-    xinc16 herePtr
+    incWord herePtr
 endmacro
-
-osrdch = &ffe0
-oswrch = &ffe3
-
-screenStart = &3000
 
 guard &10
 org &0
 
-.temp skip 2
+.temp skip 2 ; used by _lit
 .herePtr skip 2
 .embeddedPtr skip 2
 .msgPtr skip 2
-.tempDispatch skip 1 ;; TODO: kill
 
 guard screenStart
-org &2000 ;; 1100 NO, 1200 OK?
+org kernelStart
 
 .start:
     jmp main
 
 .cls:
     lda #22 : jsr oswrch
-    lda #7 : .jsr jsr oswrch
+    lda #7 : jsr oswrch
     .rts rts
 
 .spin:
     jmp spin
 
-.print_message: {
+.writeChar: { ;; mapping 10 --> 13
+    cmp #10
+    bne ok
+    clc : adc #3
+.ok:
+    jmp oswrch
+    }
+
+.print_message: { ; just for dev; used by stop/puts
     tya : pha
     ldy #0
 .loop
@@ -107,22 +117,18 @@ org &2000 ;; 1100 NO, 1200 OK?
     sta 1, x
     rts
 
-._emit: {
-	popA
-    cmp #10
-    bne ok
-    clc : adc #3
-.ok:
-    jsr oswrch
-	popA
+._emit:
+	popA ;lo
+    jsr writeChar
+	popA ;hi
     rts
-    }
 
 ._key: {
     lda #0
-    pushA
+    pushA ;hi
     jsr indirect
-    pushA
+    pushA ;lo
+    ;jmp writeChar; echo
     rts
 .indirect:
     jmp (indirection)
@@ -132,7 +138,7 @@ org &2000 ;; 1100 NO, 1200 OK?
     ldy #0
     lda (embeddedPtr),y
     beq switch
-    xinc16 embeddedPtr
+    incWord embeddedPtr
 	rts
 .switch:
     copy16i interactive, indirection
@@ -146,44 +152,44 @@ org &2000 ;; 1100 NO, 1200 OK?
     jmp _execute
 
 ._execute: {
-    popA
+    popA ;lo
     sta indirection
-    popA
+    popA ;hi
     sta indirection+1
     jmp (indirection)
 .indirection
     equw 0 }
 
 ._compile_comma:
-    lda jsr ; TODO: hardcode literal
+    lda #jsrOpCode
     ldy #0
     commaHereY
-    popA
+    popA ;lo
     commaHereY
-    popA
+    popA ;hi
     commaHereY
     rts
 
 ._comma:
     ldy #0
-    popA
+    popA ;lo
     commaHereY
-    popA
+    popA ;hi
     commaHereY
     rts
 
 ._write_ret:
-    lda rts ; TODO hardcode literal
+    lda #rtsOpCode
     ldy #0
     sta (herePtr),y
-    xinc16 herePtr
+    incWord herePtr
     rts
 
 ._here:
     lda herePtr+1
-    pushA
+    pushA ;hi
     lda herePtr
-    pushA
+    pushA ;lo
     rts
 
 ._lit:
@@ -191,14 +197,14 @@ org &2000 ;; 1100 NO, 1200 OK?
     sta temp
     pla
     sta temp+1
-    xinc16 temp
+    incWord temp
     ldy #1
     lda (temp),y
-    pushA
+    pushA ;hi
     ldy #0
     lda (temp),y
-    pushA
-    xinc16 temp
+    pushA ;lo
+    incWord temp
     lda temp+1
     pha
     lda temp
@@ -207,36 +213,38 @@ org &2000 ;; 1100 NO, 1200 OK?
 
 ._set_dispatch_table:
     jsr _key
-    popA
+    popA ;lo
     asl a
     tay
-    popA
+    popA ;hi
     jsr _here
-    popA
+    popA ;lo
     sta dispatch_table,y
-    popA
+    popA ;hi
     sta dispatch_table+1,y
 	rts
 
 ._dispatch: {
-    popA
-    sta tempDispatch
+    popA ;lo
+    sta saved+1
     asl a
     tay
-    popA
+    popA ;hi
     lda dispatch_table+1,y
-    pushA
+    pushA ;hi
     lda dispatch_table,y
-    pushA
+    pushA ;lo
 	ora 1, x
     beq unset
     rts
 .unset
     lda #'(' : jsr oswrch
-    lda tempDispatch : jsr oswrch
+    .saved : lda #0 : jsr oswrch
     lda #')' : jsr oswrch
     stop "unset"
     }
+
+print "kernel size (sans dispatch table): ", *-start
 
 U = 0
 .dispatch_table:
@@ -380,12 +388,18 @@ equw U ; 7f DEL
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
+print "kernel size: ", *-start
+print "bytes left (after kernel): ", screenStart-*
+
+.here_start:
+
 .embedded:
     incbin "play.q"
     equb 0
 
-.here_start:
+print "embedded size: ", *-embedded
+print "bytes left (after embedded): ", screenStart-*
 
 .end:
-print "bytes left: ", screenStart-*
+
 save "Code", start, end

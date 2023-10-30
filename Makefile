@@ -13,6 +13,6 @@ run-%: _build/%.ssd
 
 _build/%.ssd: src/%.asm Makefile play.q
 	@ echo Building $<
-	@ beebasm -i $< -do $@ -boot Code || rm $@
+	@ beebasm -w -i $< -do $@ -boot Code || rm $@
 
 _build: ; @mkdir -p $@
