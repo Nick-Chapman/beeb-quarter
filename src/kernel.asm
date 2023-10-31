@@ -24,6 +24,7 @@ endmacro
 
 macro stop message
     jsr _cr
+    puts "stop:"
     puts message : newline
     jmp spin
 endmacro
@@ -90,7 +91,7 @@ org kernelStart
 .digits EQUS "0123456789abcdef" }
 
 ;; .debug_comma: ;; clobbers A
-;;     ;; show where here is & value in A
+;;     ;; show where here is & value in A - TODO: also show y
 ;;     pha
 ;;     newline
 ;;     lda hereVar+1 : jsr printHexA
@@ -100,9 +101,14 @@ org kernelStart
 ;; 	jsr printHexA
 ;;     rts
 
-macro commaHereY ; takes value in A; Y needs to be set (to 0)
-    sta (hereVar),y
+macro commaHere ; takes value in A; Y needs to be set to offset
+    sta (hereVar), y
     ;;jsr debug_comma
+endmacro
+
+macro commaHereBump ; takes value in A
+	ldy #0
+    commaHere
     incWord hereVar
 endmacro
 
@@ -143,6 +149,13 @@ macro popA ; lo-byte then hi-byte
     inx
 endmacro
 
+macro PsTopToTemp
+    lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+endmacro
+
 ._drop:
     inx : inx
     rts
@@ -158,6 +171,14 @@ endmacro
 macro defword NAME,PREV
 .name: equs NAME, 0
 equw name, PREV : equb 0
+endmacro
+
+ImmediateFlag = &40
+HiddenFlag = &80
+
+macro defwordImmediate NAME,PREV
+.name: equs NAME, 0
+equw name, PREV : equb ImmediateFlag
 endmacro
 
 def0 = 0
@@ -203,7 +224,67 @@ defword "cr", def4 : def5=*
     lda #13
     jmp osasci
 
-last = def5
+;;;defword "immediate?", def5 : def6=*
+def6=def5
+._immediate_query: {
+    ;newline : puts "immediate?(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
+    PsTopToTemp
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #255 ; -1
+    lda (temp),y
+    and #ImmediateFlag
+    ;; y is conveniently &ff(true). incrementing will make it false
+    bne yes
+    iny
+.yes:
+    ; Y is 00/ff, which if double stored, is false/true
+    sty PS+0, x ; lo
+    sty PS+1, x ; hi
+
+    ;newline : puts "immediate?(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+
+    ;stop "immediate_query:end"
+    rts
+    }
+
+;;;defword "hidden?", def6 : def7=*
+def7=def6
+._hidden_query:
+    ;; TODO: support hidden flag & hiding
+    ;; Agghh.. need to pop the arg before pushing the answer! - DONE
+    popA
+    popA
+    lda #0
+    pushA
+    pushA
+    rts
+
+defword "immediate^", def7 : def8=*
+    PsTopToTemp
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #255 ; -1
+    lda (temp),y
+    eor #ImmediateFlag
+    sta (temp),y
+    rts
+
+defword "latest", def8 : def9=*
+._latest:
+    lda latestVar+1
+    pushA
+    lda latestVar
+    pushA
+    rts
+print "_latest: &", STR$~(_latest)
+
+last = def9
+.latestVar equw last
 
 
 ._over:
@@ -324,10 +405,7 @@ last = def5
     ;lda PS+1,x : jsr printHexA
     ;lda PS+0,x : jsr printHexA
 
-	lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
+    PsTopToTemp
     ldy #0
     lda (temp),y
 	sta PS+0, x ; lo-value
@@ -348,10 +426,7 @@ last = def5
     ;lda PS+1,x : jsr printHexA
     ;lda PS+0,x : jsr printHexA
 
-	lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
+    PsTopToTemp
     ldy #0
     lda (temp),y
 	sta PS+0, x ; lo-value
@@ -385,7 +460,7 @@ last = def5
     ;;jsr writeChar ; echo : TODO: move echo into key_indirect
     rts
 
-print "_key: &", STR$~(_key)
+;;;print "_key: &", STR$~(_key)
 
 .key_indirect: {
     jmp (indirection) ; TODO: prefer SMC
@@ -408,7 +483,7 @@ print "_key: &", STR$~(_key)
     pla
     rts
 
-print "_exit: &", STR$~(_exit)
+;;;print "_exit: &", STR$~(_exit)
 
 ._jump:
     pla
@@ -425,29 +500,26 @@ print "_exit: &", STR$~(_exit)
 
 ._write_ret:
     lda #rtsOpCode
-    ldy #0
-    commaHereY
+    commaHereBump
     rts
 
 ._compile_comma:
     lda #jsrOpCode
-    ldy #0
-    commaHereY
+    commaHereBump
     popA ;lo
-    commaHereY
+    commaHereBump
     popA ;hi
-    commaHereY
+    commaHereBump
     rts
 
 ._comma:
     jsr _c_comma
-    commaHereY ; the only extra thing
+    commaHereBump ; the only extra thing
     rts
 
 ._c_comma:
-    ldy #0
     popA ;lo
-    commaHereY
+    commaHereBump
     popA ;hi
     rts
 
@@ -473,7 +545,7 @@ print "_exit: &", STR$~(_exit)
     pha
     rts
 
-print "_lit: &", STR$~(_lit)
+;;;print "_lit: &", STR$~(_lit)
 
 ._branch0: {
     pla
@@ -560,24 +632,22 @@ print "_lit: &", STR$~(_lit)
     ;newline
     rts
 
-._entry_comma:
-    ;; TODO: create the dictinary entry
-    popA
-    popA
-    rts
-
-._hidden_query:
-    ;; TODO: support hidden flag & hiding
-    ;; Agghh.. need to pop the arg before pushing the answer! - DONE
-    popA
-    popA
-    lda #0
-    pushA
-    pushA
-    rts
-
-._immediate_query:
-    stop "immediate_query"
+._entry_comma: ;; ( name -- )
+    popA ;lo-name
+    commaHereBump
+    popA ;hi-name
+    commaHereBump
+    lda latestVar ;lo-prev
+    commaHereBump
+    lda latestVar+1 ;hi-prev
+    commaHereBump
+    lda #0 ; byte for immediate/hidden flags
+    commaHereBump
+    ;; Set latest to here (after it has been advanced over the entry)
+    lda hereVar
+    sta latestVar
+    lda hereVar+1
+    sta latestVar+1
     rts
 
 ._xt_next:
@@ -585,11 +655,7 @@ print "_lit: &", STR$~(_lit)
     ;lda PS+1,x : jsr printHexA
     ;lda PS+0,x : jsr printHexA
 
-	lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
-
+    PsTopToTemp
     dec temp+1 ; back 256 bytes ; to allow negative acess
     ldy #253 ; -3
     lda (temp),y
@@ -609,10 +675,7 @@ print "_lit: &", STR$~(_lit)
     ;lda PS+1,x : jsr printHexA
     ;lda PS+0,x : jsr printHexA
 
-	lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
+    PsTopToTemp
 
     ;newline : puts "temp: "
     ;lda temp+1 : jsr printHexA
@@ -664,14 +727,6 @@ print "_lit: &", STR$~(_lit)
 
     rts
 
-
-._latest:
-    ;; TODO: need var for latest, so new entries can be created
-    lda #HI(last)
-    pushA
-    lda #LO(last)
-    pushA
-    rts
 
 ._crash_only_during_startup:
     stop "crash_only_during_startup"
