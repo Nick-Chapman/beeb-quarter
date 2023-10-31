@@ -281,9 +281,17 @@ defword "latest", def8 : def9=*
     lda latestVar
     pushA
     rts
-print "_latest: &", STR$~(_latest)
+;print "_latest: &", STR$~(_latest)
 
-last = def9
+defword "here-pointer", def9 : def10=*
+._here_pointer:
+    lda #HI(hereVar)
+    pushA ;hi
+    lda #LO(hereVar)
+    pushA ;lo
+    rts
+
+last = def10
 .latestVar equw last
 
 
@@ -620,17 +628,6 @@ last = def9
     jmp spin
     }
 
-
-._here_pointer:
-    lda #HI(hereVar)
-    pushA ;hi
-    lda #LO(hereVar)
-    pushA ;lo
-    ;newline : puts "here_pointer(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-    rts
 
 ._entry_comma: ;; ( name -- )
     popA ;lo-name
