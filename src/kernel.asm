@@ -109,12 +109,20 @@ macro popA ; lo-byte then hi-byte
     inx
 endmacro
 
+._drop:
+    stop "dup"
+    rts
+
 ._dup:
     dex : dex
     lda PS+2, x
     sta PS+0, x
     lda PS+3, x
     sta PS+1, x
+    rts
+
+._over:
+    stop "over"
     rts
 
 ._swap:
@@ -128,6 +136,17 @@ endmacro
     sta PS+1, x
     rts
 
+._plus: ;; PH PL + QH QL
+    clc
+    lda PS+2, x ; PL
+    adc PS+0, x ; QL
+    sta PS+2, x
+    lda PS+3, x ; PH
+    adc PS+1, x ; QH
+    sta PS+3, x
+    inx : inx
+    rts
+
 ._minus: ;; PH PL - QH QL
     sec
     lda PS+2, x ; PL
@@ -137,6 +156,10 @@ endmacro
     sbc PS+1, x ; QH
     sta PS+3, x
     inx : inx
+    rts
+
+._less_than:
+    stop "less_than"
     rts
 
 ._equal: { ;; PH PL = QH QL
@@ -168,6 +191,10 @@ endmacro
     ldy #1
     lda (temp),y
 	sta PS+1, x ; hi-value
+    rts
+
+._c_fetch:
+    stop "c_fetch"
     rts
 
 ._store: ; ( value addr -- )
@@ -295,6 +322,7 @@ endmacro
     pla
     sta temp+1
 	;; TODO: branch the correct distance! instead of hacking to be 5 !
+    ;; TODO TODO TODO !!!
     incWord temp
     incWord temp
     incWord temp
@@ -359,6 +387,13 @@ endmacro
     pushA
     rts
 
+._one:
+    lda #0
+    pushA ;hi
+    lda #1
+    pushA ;lo
+    rts
+
 ._here_pointer:
     lda herePtr+1
     pushA ;hi
@@ -370,6 +405,26 @@ endmacro
     ;; TODO: create the dictinary entry
     popA
     popA
+    rts
+
+._hidden_query:
+    stop "hidden_query"
+    rts
+
+._xt_next:
+    stop "xt_next"
+    rts
+
+._xt_name:
+    stop "xt_name"
+    rts
+
+._latest:
+    stop "latest"
+    rts
+
+._crash_only_during_startup:
+    stop "crash_only_during_startup"
     rts
 
 print "kernel size (sans dispatch table): ", *-start
@@ -422,14 +477,14 @@ equw U ; 27 '
 equw U ; 28 (
 equw U ; 29 )
 equw U ; 2a *
-equw U ; 2b +
+equw _plus ; 2b +
 equw _comma ; 2c ,
 equw _minus ; 2d -
 equw _emit ; 2e .
 equw U ; 2f /
 
 equw _zero ; 30 0
-equw U ; 31 1
+equw _one ; 31 1
 equw U ; 32 2
 equw U ; 33 3
 equw U ; 34 4
@@ -440,29 +495,29 @@ equw U ; 38 8
 equw U ; 39 9
 equw _set_dispatch_table ; 3a :
 equw _write_ret ; 3b ;
-equw U ; 3c <
+equw _less_than ; 3c <
 equw _equal ; 3d =
 equw _compile_comma ; 3e >
 equw _dispatch ; 3f ?
 
 equw _fetch ; 40 @
-equw U ; 41 A
+equw _crash_only_during_startup ; 41 A
 equw _branch0 ; 42 B
-equw U ; 43 C
+equw _c_fetch ; 43 C
 equw _dup ; 44 D
 equw _entry ; 45 E
 equw U ; 46 F
-equw U ; 47 G
+equw _xt_next ; 47 G
 equw _here_pointer ; 48 H
 equw U ; 49 I
 equw _jump ; 4a J
 equw U ; 4b K
 equw _lit ; 4c L
 equw _cr ; 4d M
-equw U ; 4e N
-equw U ; 4f O
+equw _xt_name ; 4e N
+equw _over ; 4f O
 
-equw U ; 50 P
+equw _drop ; 50 P
 equw U ; 51 Q
 equw U ; 52 R
 equw U ; 53 S
@@ -471,8 +526,8 @@ equw U ; 55 U
 equw _execute ; 56 V
 equw _swap ; 57 W
 equw _exit ; 58 X
-equw U ; 59 Y
-equw U ; 5a Z
+equw _hidden_query ; 59 Y
+equw _latest ; 5a Z
 equw U ; 5b [
 equw U ; 5c \
 equw U ; 5d ]
