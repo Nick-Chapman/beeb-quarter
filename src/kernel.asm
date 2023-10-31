@@ -1,4 +1,4 @@
-mode = 7
+mode = 1
 
 jsrOpCode = &20
 rtsOpCode = &60
@@ -40,7 +40,6 @@ macro incWord V
 .done:
 endmacro
 
-;; TODO: add PS overflow check
 PS = &90 ; Was 0. Bad interaction with osasci
 
 guard &10
@@ -56,7 +55,7 @@ org kernelStart
 .start:
     jmp main
 
-.hereVar skip 2
+.hereVar skip 2 ; TODO: make this zero page again. avoid copy into temp
 
 .cls:
     lda #22 : jsr oswrch
@@ -104,7 +103,7 @@ org kernelStart
 
 macro commaHereY ; takes value in A; Y needs to be set (to 0)
     pha
-    lda hereVar : sta temp
+    lda hereVar : sta temp ; TODO avoid copy when hereVar in zero page again
     lda hereVar+1 : sta temp+1
     pla
     sta (temp),y
@@ -139,10 +138,6 @@ endmacro
 ._nop:
     rts
 
-._cr:
-    lda #13
-    jmp osasci
-
 macro pushA ; hi-byte then lo-byte
     dex
 	sta PS, x
@@ -157,6 +152,30 @@ endmacro
     inx : inx
     rts
 
+._zero:
+    lda #0
+    pushA
+    pushA
+    rts
+
+;;; Sadly we can't redifine symbols in beebasm
+;;; so we have to explicitly pass the previous def to setup the linked list
+macro defword NAME,PREV
+.name: equs NAME, 0
+equw name, PREV : equb 0
+endmacro
+
+def0 = 0
+
+defword "1", def0 : def1=*
+._one:
+    lda #0
+    pushA ;hi
+    lda #1
+    pushA ;lo
+    rts
+
+defword "dup", def1 : def2=*
 ._dup:
     dex : dex
     lda PS+2, x
@@ -164,6 +183,33 @@ endmacro
     lda PS+3, x
     sta PS+1, x
     rts
+
+defword "+", def2 : def3=*
+._plus: ;; PH PL + QH QL
+    clc
+    lda PS+2, x ; PL
+    adc PS+0, x ; QL
+    sta PS+2, x
+    lda PS+3, x ; PH
+    adc PS+1, x ; QH
+    sta PS+3, x
+    inx : inx
+    rts
+
+defword "emit", def3 : def4=*
+._emit:
+	popA ;lo
+    jsr writeChar
+	popA ;hi
+    rts
+
+defword "cr", def4 : def5=*
+._cr:
+    lda #13
+    jmp osasci
+
+last = def5
+
 
 ._over:
     dex : dex
@@ -182,17 +228,6 @@ endmacro
     lda PS+3, x
     sty PS+3, x
     sta PS+1, x
-    rts
-
-._plus: ;; PH PL + QH QL
-    clc
-    lda PS+2, x ; PL
-    adc PS+0, x ; QL
-    sta PS+2, x
-    lda PS+3, x ; PH
-    adc PS+1, x ; QH
-    sta PS+3, x
-    inx : inx
     rts
 
 ._minus: ;; PH PL - QH QL
@@ -267,7 +302,6 @@ endmacro
     ;lda PS+0,x : jsr printHexA
     ;newline
 
-    ;stop "less:done"
     rts
     }
 
@@ -333,7 +367,6 @@ endmacro
     ;lda PS+0,x : jsr printHexA
     ;newline
 
-    ;stop "stop:c_fetch"
     rts
 
 ._store: ; ( value addr -- )
@@ -349,18 +382,12 @@ endmacro
     sta (temp),y
     rts
 
-._emit:
-	popA ;lo
-    jsr writeChar
-	popA ;hi
-    rts
-
 ._key:
     lda #0
     pushA ;hi
     jsr key_indirect
     pushA ;lo
-    jsr writeChar ; echo : TODO: move echo into key_indirect
+    ;;jsr writeChar ; echo : TODO: move echo into key_indirect
     rts
 
 print "_key: &", STR$~(_key)
@@ -472,7 +499,6 @@ print "_lit: &", STR$~(_lit)
     lda #2
 
 .bump:
-    ;stop "bump"
     ;pha : newline : puts "dist: " : pla : pha : jsr printHexA : newline : pla
 
     clc
@@ -527,18 +553,6 @@ print "_lit: &", STR$~(_lit)
     jmp spin
     }
 
-._zero:
-    lda #0
-    pushA
-    pushA
-    rts
-
-._one:
-    lda #0
-    pushA ;hi
-    lda #1
-    pushA ;lo
-    rts
 
 ._here_pointer:
     lda #HI(hereVar)
@@ -558,7 +572,13 @@ print "_lit: &", STR$~(_lit)
     rts
 
 ._hidden_query:
-    stop "hidden_query"
+    ;; TODO: support hidden flag & hiding
+    ;; Agghh.. need to pop the arg before pushing the answer! - DONE
+    popA
+    popA
+    lda #0
+    pushA
+    pushA
     rts
 
 ._immediate_query:
@@ -566,18 +586,95 @@ print "_lit: &", STR$~(_lit)
     rts
 
 ._xt_next:
-    stop "xt_next"
+    ;newline : puts "xt_next(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
+	lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #253 ; -3
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #254 ; -2
+    lda (temp),y
+	sta PS+1, x ; hi-value
+
+    ;newline : puts "xt_next(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
     rts
 
 ._xt_name:
-    stop "xt_name"
+    ;newline : puts "xt_name(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
+	lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+
+    ;newline : puts "temp: "
+    ;lda temp+1 : jsr printHexA
+    ;lda temp : jsr printHexA
+
+    ;; backup temp some bytes to allow peeking
+    ;; sec
+    ;; lda temp
+    ;; sbc #8
+    ;; sta temp
+    ;; lda temp+1
+    ;; sbc #0
+    ;; sta temp+1
+
+    ;; newline : puts "*temp: "
+    ;; ldy #0 : lda (temp),y : jsr printHexA
+    ;; ldy #1 : lda (temp),y : jsr printHexA
+    ;; ldy #2 : lda (temp),y : jsr printHexA
+    ;; ldy #3 : lda (temp),y : jsr printHexA
+    ;; ldy #4 : lda (temp),y : jsr printHexA
+    ;; ldy #5 : lda (temp),y : jsr printHexA
+    ;; ldy #6 : lda (temp),y : jsr printHexA
+    ;; ldy #7 : lda (temp),y : jsr printHexA
+    ;; ldy #8 : lda (temp),y : jsr printHexA
+
+    ;;dec temp+1 ; back 256 bytes
+    ;; to allow negative acess
+    ;; newline : puts "*temp: "
+    ;; ldy #248 : lda (temp),y : jsr printHexA
+    ;; ldy #249 : lda (temp),y : jsr printHexA
+    ;; ldy #250 : lda (temp),y : jsr printHexA ; null
+    ;; ldy #251 : lda (temp),y : jsr printHexA
+    ;; ldy #252 : lda (temp),y : jsr printHexA
+    ;; ldy #253 : lda (temp),y : jsr printHexA
+    ;; ldy #254 : lda (temp),y : jsr printHexA
+    ;; ldy #255 : lda (temp),y : jsr printHexA
+
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #251 ; -5
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #252 ; -4
+    lda (temp),y
+	sta PS+1, x ; hi-value
+
+    ;newline : puts "xt_name(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
     rts
 
+
 ._latest:
-    ;;stop "latest"
-    ;; TODO: link ASM kernel words into the dictionary
-    lda #0
+    ;; TODO: need var for latest, so new entries can be created
+    lda #HI(last)
     pushA
+    lda #LO(last)
     pushA
     rts
 
@@ -738,7 +835,7 @@ print "here_start: &", STR$~(here_start)
 .embedded:
     ;incbin "play.q"
     incbin "../quarter-forth/f/quarter.q"
-    ;incbin "../quarter-forth/f/forth.f"
+    incbin "../quarter-forth/f/forth.f-prefix"
     equb 0
 
 print "embedded size: ", *-embedded
