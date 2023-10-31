@@ -45,6 +45,7 @@ PS = &90 ; Was 0. Bad interaction with osasci
 guard &10
 org &0
 
+.hereVar skip 2
 .temp skip 2 ; used by _lit & elsewhere
 .embeddedPtr skip 2
 .msgPtr skip 2
@@ -54,8 +55,6 @@ org kernelStart
 
 .start:
     jmp main
-
-.hereVar skip 2 ; TODO: make this zero page again. avoid copy into temp
 
 .cls:
     lda #22 : jsr oswrch
@@ -90,23 +89,19 @@ org kernelStart
     rts
 .digits EQUS "0123456789abcdef" }
 
-.debug_comma: ;; clobbers A
-    ;; show where here is & value in A
-    pha
-    newline
-    lda hereVar+1 : jsr printHexA
-    lda hereVar : jsr printHexA
-    lda #'=' : jsr osasci
-    pla
-	jsr printHexA
-    rts
+;; .debug_comma: ;; clobbers A
+;;     ;; show where here is & value in A
+;;     pha
+;;     newline
+;;     lda hereVar+1 : jsr printHexA
+;;     lda hereVar : jsr printHexA
+;;     lda #'=' : jsr osasci
+;;     pla
+;; 	jsr printHexA
+;;     rts
 
 macro commaHereY ; takes value in A; Y needs to be set (to 0)
-    pha
-    lda hereVar : sta temp ; TODO avoid copy when hereVar in zero page again
-    lda hereVar+1 : sta temp+1
-    pla
-    sta (temp),y
+    sta (hereVar),y
     ;;jsr debug_comma
     incWord hereVar
 endmacro
@@ -565,7 +560,7 @@ print "_lit: &", STR$~(_lit)
     ;newline
     rts
 
-._entry:
+._entry_comma:
     ;; TODO: create the dictinary entry
     popA
     popA
@@ -760,7 +755,7 @@ equw _crash_only_during_startup ; 41 A
 equw _branch0 ; 42 B
 equw _c_fetch ; 43 C
 equw _dup ; 44 D
-equw _entry ; 45 E
+equw _entry_comma ; 45 E
 equw U ; 46 F
 equw _xt_next ; 47 G
 equw _here_pointer ; 48 H
