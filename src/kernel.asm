@@ -1,3 +1,4 @@
+mode = 7
 
 jsrOpCode = &20
 rtsOpCode = &60
@@ -59,7 +60,7 @@ org kernelStart
 
 .cls:
     lda #22 : jsr oswrch
-    lda #0 : jsr oswrch
+    lda #mode : jsr oswrch
     rts
 
 .spin:
@@ -94,7 +95,7 @@ org kernelStart
     ;; show where here is & value in A
     pha
     newline
-    lda hereVar+1 : jsr printHexA ;; TODO: here-bug. need extra indirection when we fix herePtr bug
+    lda hereVar+1 : jsr printHexA
     lda hereVar : jsr printHexA
     lda #'=' : jsr osasci
     pla
@@ -153,7 +154,7 @@ macro popA ; lo-byte then hi-byte
 endmacro
 
 ._drop:
-    stop "dup"
+    inx : inx
     rts
 
 ._dup:
@@ -165,7 +166,11 @@ endmacro
     rts
 
 ._over:
-    stop "over"
+    dex : dex
+    lda PS+4, x
+    sta PS+0, x
+    lda PS+5, x
+    sta PS+1, x
     rts
 
 ._swap:
@@ -214,9 +219,57 @@ endmacro
 
     rts
 
-._less_than:
-    stop "less_than"
+._less_than: {  ;; PH PL < QH QL
+
+    ;newline : puts "less(pre): "
+    ;lda PS+3,x : jsr printHexA
+    ;lda PS+2,x : jsr printHexA
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
+    ;; compare high order bytes first
+    ;; cmp is like subtract. do: P - Q
+    ;; check carry flag
+    ;; if it (remains) set we didn't borrow
+    ;; if it gets cleared we borrowed (so Q>P)
+
+    ;newline : puts "test hi"
+    lda PS+3, x ; PH
+    cmp PS+1, x ; QH
+	bcc less
+    bne notLess
+    ;; drop here only if hi-bytes are equal
+
+    beq equal ; should not be needed
+    stop "impossible"
+.equal:
+    ;newline : puts "test lo"
+
+    lda PS+2, x ; PL
+    cmp PS+0, x ; QL
+    bcc less
+
+.notLess:
+    ;newline : puts "NOT-LESS"
+    lda #0 ; false
+    jmp store
+
+.less:
+    ;newline : puts "LESS"
+    lda #&ff ; true
+.store:
+    sta PS+2, x
+    sta PS+3, x
+    inx : inx
+
+    ;newline : puts "less(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+
+    ;stop "less:done"
     rts
+    }
 
 ._equal: { ;; PH PL = QH QL
     lda PS+2, x ; PL
@@ -261,7 +314,26 @@ endmacro
     rts
 
 ._c_fetch:
-    stop "c_fetch"
+
+    ;newline : puts "c_fetch(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
+	lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+    ldy #0
+    lda (temp),y
+	sta PS+0, x ; lo-value
+	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
+
+    ;newline : puts "c_fetch(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+
+    ;stop "stop:c_fetch"
     rts
 
 ._store: ; ( value addr -- )
@@ -291,7 +363,7 @@ endmacro
     jsr writeChar ; echo : TODO: move echo into key_indirect
     rts
 
-print "_key: ", STR$~(_key)
+print "_key: &", STR$~(_key)
 
 .key_indirect: {
     jmp (indirection) ; TODO: prefer SMC
@@ -314,7 +386,7 @@ print "_key: ", STR$~(_key)
     pla
     rts
 
-print "_exit: ", STR$~(_exit)
+print "_exit: &", STR$~(_exit)
 
 ._jump:
     pla
@@ -379,7 +451,7 @@ print "_exit: ", STR$~(_exit)
     pha
     rts
 
-print "_lit: ", STR$~(_lit)
+print "_lit: &", STR$~(_lit)
 
 ._branch0: {
     pla
@@ -392,24 +464,21 @@ print "_lit: ", STR$~(_lit)
     bne untaken
 
 .taken:
-    ldy #1 : lda (temp),y ; this is where we expect to find the 5
-    cmp #5 ; and we do!
-    beq taken5
-    newline : puts "dist: " : ldy #1 : lda (temp),y : jsr printHexA : newline
-    stop "not5"
-
-.taken5:
-    lda #5
+    ;newline : puts "taken"
+    ldy #1 : lda (temp),y
 	jmp bump
-
 .untaken:
+    ;newline : puts "untaken"
     lda #2
 
 .bump:
+    ;stop "bump"
+    ;pha : newline : puts "dist: " : pla : pha : jsr printHexA : newline : pla
+
     clc
     adc temp
     sta temp
-    lda #0 ;; TODO: should be hi-byte of dest for long branches
+    lda #0 ;; TODO: should be hi-byte of dest for long branches. Use SMC !
     adc temp+1
     sta temp+1
     ;; TODO: avoid saving back into temp. just push directly to return-stack
@@ -492,6 +561,10 @@ print "_lit: ", STR$~(_lit)
     stop "hidden_query"
     rts
 
+._immediate_query:
+    stop "immediate_query"
+    rts
+
 ._xt_next:
     stop "xt_next"
     rts
@@ -501,7 +574,11 @@ print "_lit: ", STR$~(_lit)
     rts
 
 ._latest:
-    stop "latest"
+    ;;stop "latest"
+    ;; TODO: link ASM kernel words into the dictionary
+    lda #0
+    pushA
+    pushA
     rts
 
 ._crash_only_during_startup:
@@ -526,7 +603,7 @@ equw U ; 9
 equw _nop ; a
 equw U ; b
 equw U ; c
-equw _nop ; d
+equw U ; d
 equw U ; e
 equw U ; f
 
@@ -590,7 +667,7 @@ equw _entry ; 45 E
 equw U ; 46 F
 equw _xt_next ; 47 G
 equw _here_pointer ; 48 H
-equw U ; 49 I
+equw _immediate_query ; 49 I
 equw _jump ; 4a J
 equw U ; 4b K
 equw _lit ; 4c L
@@ -652,20 +729,22 @@ equw U ; 7f DEL
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
-;print "kernel size: ", *-start
-;print "bytes left (after kernel): ", screenStart-*
+print "kernel size: ", *-start
+print "bytes left (after kernel): ", screenStart-*
 
 .here_start:
-print "here_start: ", STR$~(here_start)
+print "here_start: &", STR$~(here_start)
 
 .embedded:
     ;incbin "play.q"
     incbin "../quarter-forth/f/quarter.q"
+    ;incbin "../quarter-forth/f/forth.f"
     equb 0
 
-;print "embedded size: ", *-embedded
-;print "bytes left (after embedded): ", screenStart-*
+print "embedded size: ", *-embedded
 
 .end:
+
+print "end (after embedded): &", STR$~(end)
 
 save "Code", start, end
