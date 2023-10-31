@@ -1,5 +1,8 @@
 mode = 1
 
+ImmediateFlag = &40
+HiddenFlag = &80
+
 jsrOpCode = &20
 rtsOpCode = &60
 
@@ -9,6 +12,61 @@ oswrch = &ffee
 
 kernelStart = &1900 ;; 1100 NO, 1200 OK
 screenStart = &3000
+
+PS = &90 ; Was 0. Bad interaction with osasci
+
+guard &10
+org &0
+
+.hereVar skip 2
+.temp skip 2 ; used by _lit & elsewhere
+.embeddedPtr skip 2
+.msgPtr skip 2
+
+guard screenStart
+org kernelStart
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+macro copy16i I,V
+    lda #LO(I) : sta V
+    lda #HI(I) : sta V+1
+endmacro
+
+macro incWord V
+    inc V
+    bne done
+    inc V+1
+.done:
+endmacro
+
+macro commaHere ; takes value in A; Y needs to be set to offset
+    sta (hereVar), y
+    ;;jsr debug_comma
+endmacro
+
+macro commaHereBump ; takes value in A
+	ldy #0
+    commaHere
+    incWord hereVar
+endmacro
+
+macro pushA ; hi-byte then lo-byte
+    dex
+	sta PS, x
+endmacro
+
+macro popA ; lo-byte then hi-byte
+	lda PS, x
+    inx
+endmacro
+
+macro PsTopToTemp
+    lda PS+0, x ; lo-addr
+    sta temp
+	lda PS+1, x ; hi-addr
+    sta temp+1
+endmacro
 
 macro puts message
     copy16i msg, msgPtr
@@ -29,30 +87,24 @@ macro stop message
     jmp spin
 endmacro
 
-macro copy16i I,V
-    lda #LO(I) : sta V
-    lda #HI(I) : sta V+1
+;;; Sadly we can't redifine symbols in beebasm
+;;; so we have to explicitly pass the previous def to setup the linked list
+macro defword NAME,PREV
+.name: equs NAME, 0
+equw name, PREV : equb 0
 endmacro
 
-macro incWord V
-    inc V
-    bne done
-    inc V+1
-.done:
+;macro defwordImmediate NAME,PREV
+;.name: equs NAME, 0
+;equw name, PREV : equb ImmediateFlag
+;endmacro
+
+.zeroName: equs 0
+macro xdefword NAME,PREV ; NAME ignored. def wont be found
+equw zeroName, PREV : equb 0
 endmacro
 
-PS = &90 ; Was 0. Bad interaction with osasci
-
-guard &10
-org &0
-
-.hereVar skip 2
-.temp skip 2 ; used by _lit & elsewhere
-.embeddedPtr skip 2
-.msgPtr skip 2
-
-guard screenStart
-org kernelStart
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .start:
     jmp main
@@ -101,17 +153,6 @@ org kernelStart
 ;; 	jsr printHexA
 ;;     rts
 
-macro commaHere ; takes value in A; Y needs to be set to offset
-    sta (hereVar), y
-    ;;jsr debug_comma
-endmacro
-
-macro commaHereBump ; takes value in A
-	ldy #0
-    commaHere
-    incWord hereVar
-endmacro
-
 .print_message: { ; just for dev; used by stop/puts
     tya : pha
     ldy #0
@@ -139,59 +180,24 @@ endmacro
 ._nop:
     rts
 
-macro pushA ; hi-byte then lo-byte
-    dex
-	sta PS, x
-endmacro
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-macro popA ; lo-byte then hi-byte
-	lda PS, x
-    inx
-endmacro
+d0 = 0
 
-macro PsTopToTemp
-    lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
-endmacro
+xdefword "dispatch"                      , d0:d1=*
+xdefword "reset"                         , d1:d2=*
+xdefword "bye"                           , d2:d3=*
+xdefword "crash"                         , d3:d4=*
+xdefword "startup-is-complete"           , d4:d5=*
+xdefword "crash-only-during-startup"     , d5:d6=*
+xdefword "sp"                            , d6:d7=*
+xdefword "sp0"                           , d7:d8=*
+xdefword "rsp"                           , d8:d9=*
+xdefword "rsp0"                          , d9:d10=*
+xdefword "as-num"                        , d10:d11=*
 
-._drop:
-    inx : inx
-    rts
-
-._zero:
-    lda #0
-    pushA
-    pushA
-    rts
-
-;;; Sadly we can't redifine symbols in beebasm
-;;; so we have to explicitly pass the previous def to setup the linked list
-macro defword NAME,PREV
-.name: equs NAME, 0
-equw name, PREV : equb 0
-endmacro
-
-ImmediateFlag = &40
-HiddenFlag = &80
-
-macro defwordImmediate NAME,PREV
-.name: equs NAME, 0
-equw name, PREV : equb ImmediateFlag
-endmacro
-
-def0 = 0
-
-defword "1", def0 : def1=*
-._one:
-    lda #0
-    pushA ;hi
-    lda #1
-    pushA ;lo
-    rts
-
-defword "dup", def1 : def2=*
+defword "dup"                           , d11:d12=*
+	;; ( x -- x x )
 ._dup:
     dex : dex
     lda PS+2, x
@@ -200,8 +206,28 @@ defword "dup", def1 : def2=*
     sta PS+1, x
     rts
 
-defword "+", def2 : def3=*
-._plus: ;; PH PL + QH QL
+xdefword "swap"                          , d12:d13=*
+xdefword "drop"                          , d13:d14=*
+xdefword "over"                          , d14:d15=*
+xdefword ">r"                            , d15:d16=*
+xdefword "r>"                            , d16:d17=*
+xdefword "0"                             , d17:d18=*
+
+defword "1"                             , d18:d19=*
+	;; ( -- num )
+._one:
+    lda #0
+    pushA ;hi
+    lda #1
+    pushA ;lo
+    rts
+
+xdefword "xor"                           , d19:d20=*
+xdefword "/2"                            , d20:d21=*
+
+defword "+"                             , d21:d22=*
+    ;; ( P Q -- P+Q )
+._plus:
     clc
     lda PS+2, x ; PL
     adc PS+0, x ; QL
@@ -212,25 +238,41 @@ defword "+", def2 : def3=*
     inx : inx
     rts
 
-defword "emit", def3 : def4=*
-._emit:
-	popA ;lo
-    jsr writeChar
-	popA ;hi
+xdefword "-"                             , d22:d23=*
+xdefword "*"                             , d23:d24=*
+xdefword "/mod"                          , d24:d25=*
+xdefword "<"                             , d25:d26=*
+xdefword "="                             , d26:d27=*
+xdefword "@"                             , d27:d28=*
+xdefword "!"                             , d28:d29=*
+xdefword "c@"                            , d29:d30=*
+xdefword "c!"                            , d30:d31=*
+
+defword "here-pointer"                  , d31:d32=*
+    ;; ( -- a )
+._here_pointer:
+    lda #HI(hereVar)
+    pushA
+    lda #LO(hereVar)
+    pushA
     rts
 
-defword "cr", def4 : def5=*
-._cr:
-    lda #13
-    jmp osasci
+xdefword ","                             , d32:d33=*
+xdefword "c,"                            , d33:d34=*
+xdefword "lit"                           , d34:d35=*
+xdefword "execute"                       , d35:d36=*
+xdefword "jump"                          , d36:d37=*
+xdefword "exit"                          , d37:d38=*
+xdefword "0branch"                       , d38:d39=*
+xdefword "branch"                        , d39:d40=*
+xdefword "ret,"                          , d40:d41=*
+xdefword "compile,"                      , d41:d42=*
+xdefword "xt->name"                      , d42:d43=*
+xdefword "xt->next"                      , d43:d44=*
 
-;;;defword "immediate?", def5 : def6=*
-def6=def5
+xdefword "immediate?"                    , d44:d45=*
+    ;; ( xt -- bool )
 ._immediate_query: {
-    ;newline : puts "immediate?(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
     PsTopToTemp
     dec temp+1 ; back 256 bytes ; to allow negative acess
     ldy #255 ; -1
@@ -243,21 +285,12 @@ def6=def5
     ; Y is 00/ff, which if double stored, is false/true
     sty PS+0, x ; lo
     sty PS+1, x ; hi
-
-    ;newline : puts "immediate?(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-
-    ;stop "immediate_query:end"
     rts
     }
 
-;;;defword "hidden?", def6 : def7=*
-def7=def6
+xdefword "hidden?"                       , d45:d46=*
+    ;; ( xt -- bool ) ;; TODO: support
 ._hidden_query:
-    ;; TODO: support hidden flag & hiding
-    ;; Agghh.. need to pop the arg before pushing the answer! - DONE
     popA
     popA
     lda #0
@@ -265,7 +298,8 @@ def7=def6
     pushA
     rts
 
-defword "immediate^", def7 : def8=*
+defword "immediate^"                    , d46:d47=*
+    ;; ( xt -- )
     PsTopToTemp
     dec temp+1 ; back 256 bytes ; to allow negative acess
     ldy #255 ; -1
@@ -274,26 +308,55 @@ defword "immediate^", def7 : def8=*
     sta (temp),y
     rts
 
-defword "latest", def8 : def9=*
+xdefword "hidden^"                       , d47:d48=*
+xdefword "entry,"                        , d48:d49=*
+
+defword "latest"                        , d49:d50=*
+    ;; ( -- a )
 ._latest:
     lda latestVar+1
     pushA
     lda latestVar
     pushA
     rts
-;print "_latest: &", STR$~(_latest)
 
-defword "here-pointer", def9 : def10=*
-._here_pointer:
-    lda #HI(hereVar)
-    pushA ;hi
-    lda #LO(hereVar)
-    pushA ;lo
+xdefword "key"                           , d50:d51=*
+xdefword "set-key"                       , d51:d52=*
+xdefword "get-key"                       , d52:d53=*
+xdefword "echo-enabled"                  , d53:d54=*
+xdefword "echo-off"                      , d54:d55=*
+xdefword "echo-on"                       , d55:d56=*
+
+defword "emit"                          , d56:d57=*
+    ;; ( char -- )
+._emit:
+	popA
+    jsr writeChar
+	popA
     rts
 
-last = def10
+defword "cr"                            , d57:d58=*
+._cr:
+    ;; ( -- )
+    lda #13
+    jmp osasci
+
+xdefword "cls"                           , d58:d59=*
+
+last = d59
 .latestVar equw last
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+._drop:
+    inx : inx
+    rts
+
+._zero:
+    lda #0
+    pushA
+    pushA
+    rts
 
 ._over:
     dex : dex
