@@ -12,14 +12,18 @@ screenStart = &3000
 macro puts message
     copy16i msg, msgPtr
     jmp after
-.msg: equs message, 13, 0
+.msg: equs message, 0
 .after:
     jsr print_message
 endmacro
 
+macro newline ;; no clobber
+    pha : lda #13 : jsr osasci : pla ; TODO: call os newline direct. avoid clober A
+endmacro
+
 macro stop message
     jsr _cr
-    puts message
+    puts message : newline
     jmp spin
 endmacro
 
@@ -41,8 +45,7 @@ PS = &90 ; Was 0. Bad interaction with osasci
 guard &10
 org &0
 
-.herePtr skip 2
-.temp skip 2 ; used by _lit
+.temp skip 2 ; used by _lit & elsewhere
 .embeddedPtr skip 2
 .msgPtr skip 2
 
@@ -52,9 +55,11 @@ org kernelStart
 .start:
     jmp main
 
+.hereVar skip 2
+
 .cls:
     lda #22 : jsr oswrch
-    lda #7 : jsr oswrch
+    lda #0 : jsr oswrch
     rts
 
 .spin:
@@ -67,6 +72,44 @@ org kernelStart
 .ok:
     jmp osasci ; has special handling for 13 -> NL
     }
+
+.printHexA: { ;; clobbers A
+    sta mod1+1
+    sta mod2+1
+    txa : pha ; save X (killing A)
+    lda #',' : jsr osasci
+    .mod1 lda #&33 ; fixme
+    and #&f0 : lsr a : lsr a : lsr a : lsr a : tax
+    lda digits,x
+    jsr osasci
+    .mod2 lda #&44 ; fixme
+    and #&f : tax
+    lda digits,x
+    jsr osasci
+    pla : tax ; restore X (killing A)
+    rts
+.digits EQUS "0123456789abcdef" }
+
+.debug_comma: ;; clobbers A
+    ;; show where here is & value in A
+    pha
+    newline
+    lda hereVar+1 : jsr printHexA ;; TODO: here-bug. need extra indirection when we fix herePtr bug
+    lda hereVar : jsr printHexA
+    lda #'=' : jsr osasci
+    pla
+	jsr printHexA
+    rts
+
+macro commaHereY ; takes value in A; Y needs to be set (to 0)
+    pha
+    lda hereVar : sta temp
+    lda hereVar+1 : sta temp+1
+    pla
+    sta (temp),y
+    ;;jsr debug_comma
+    incWord hereVar
+endmacro
 
 .print_message: { ; just for dev; used by stop/puts
     tya : pha
@@ -85,7 +128,7 @@ org kernelStart
     ldx #0
     jsr cls
     copy16i embedded, embeddedPtr
-    copy16i here_start, herePtr
+    copy16i here_start, hereVar
 .loop:
     jsr _key
     jsr _dispatch
@@ -148,6 +191,13 @@ endmacro
     rts
 
 ._minus: ;; PH PL - QH QL
+
+    ;newline : puts "minus(pre): "
+    ;lda PS+3,x : jsr printHexA
+    ;lda PS+2,x : jsr printHexA
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
     sec
     lda PS+2, x ; PL
     sbc PS+0, x ; QL
@@ -156,6 +206,12 @@ endmacro
     sbc PS+1, x ; QH
     sta PS+3, x
     inx : inx
+
+    ;newline : puts "minus(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+
     rts
 
 ._less_than:
@@ -181,6 +237,11 @@ endmacro
     rts }
 
 ._fetch: ; ( addr -- value )
+
+    ;newline : puts "fetch(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+
 	lda PS+0, x ; lo-addr
     sta temp
 	lda PS+1, x ; hi-addr
@@ -191,6 +252,12 @@ endmacro
     ldy #1
     lda (temp),y
 	sta PS+1, x ; hi-value
+
+    ;newline : puts "fetch(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+
     rts
 
 ._c_fetch:
@@ -221,8 +288,10 @@ endmacro
     pushA ;hi
     jsr key_indirect
     pushA ;lo
-    jsr writeChar ; echo
+    jsr writeChar ; echo : TODO: move echo into key_indirect
     rts
+
+print "_key: ", STR$~(_key)
 
 .key_indirect: {
     jmp (indirection) ; TODO: prefer SMC
@@ -245,6 +314,8 @@ endmacro
     pla
     rts
 
+print "_exit: ", STR$~(_exit)
+
 ._jump:
     pla
     pla
@@ -257,11 +328,6 @@ endmacro
     sta mod+2
     .mod jmp 0
     }
-
-macro commaHereY ; Y needs to be set
-    sta (herePtr),y
-    incWord herePtr
-endmacro
 
 ._write_ret:
     lda #rtsOpCode
@@ -296,65 +362,76 @@ endmacro
     sta temp
     pla
     sta temp+1
-    incWord temp
-    ldy #1
+
+    ldy #2
     lda (temp),y
     pushA ;hi
-    ldy #0
+    ldy #1
     lda (temp),y
     pushA ;lo
+
     incWord temp
+    incWord temp
+
     lda temp+1
     pha
     lda temp
     pha
     rts
 
-._branch0:
+print "_lit: ", STR$~(_lit)
+
+._branch0: {
+    pla
+    sta temp
+    pla
+    sta temp+1
+
     popA
-    inx
-    ora PS-1, x
+    inx : ora PS-1, x
     bne untaken
 
 .taken:
-    pla
-    sta temp
-    pla
-    sta temp+1
-	;; TODO: branch the correct distance! instead of hacking to be 5 !
-    ;; TODO TODO TODO !!!
-    incWord temp
-    incWord temp
-    incWord temp
-    incWord temp
-    incWord temp
-    lda temp+1
-    pha
-    lda temp
-    pha
-    rts
-    rts
+    ldy #1 : lda (temp),y ; this is where we expect to find the 5
+    cmp #5 ; and we do!
+    beq taken5
+    newline : puts "dist: " : ldy #1 : lda (temp),y : jsr printHexA : newline
+    stop "not5"
+
+.taken5:
+    lda #5
+	jmp bump
 
 .untaken:
-    pla
+    lda #2
+
+.bump:
+    clc
+    adc temp
     sta temp
-    pla
+    lda #0 ;; TODO: should be hi-byte of dest for long branches
+    adc temp+1
     sta temp+1
-    incWord temp
-    incWord temp
+    ;; TODO: avoid saving back into temp. just push directly to return-stack
     lda temp+1
     pha
     lda temp
     pha
     rts
+    }
 
 ._set_dispatch_table:
-    jsr _key
+    ;newline : puts "set_dispatch_table" : newline
+    jsr _key ; TODO use key_indirect, avoid popping from PS
     popA ;lo
     asl a
-    tay
+    sta mod+1
     popA ;hi
+
     jsr _here_pointer
+    jsr _fetch ; clobbers Y ; TODO: inline, avoiding PS manip
+
+    .mod ldy #&33
     popA ;lo
     sta dispatch_table,y
     popA ;hi
@@ -395,10 +472,14 @@ endmacro
     rts
 
 ._here_pointer:
-    lda herePtr+1
+    lda #HI(hereVar)
     pushA ;hi
-    lda herePtr
+    lda #LO(hereVar)
     pushA ;lo
+    ;newline : puts "here_pointer(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
     rts
 
 ._entry:
@@ -472,7 +553,7 @@ equw U ; 22 "
 equw U ; 23 #
 equw U ; 24 $
 equw U ; 25 %
-equw U ; 26 &
+equw _key ; 26 & ;; TEMP, make & be _key, because that's what I get when press ^ on my keyboard
 equw U ; 27 '
 equw U ; 28 (
 equw U ; 29 )
@@ -575,6 +656,7 @@ assert ((dispatch_table_end - dispatch_table) = 256)
 ;print "bytes left (after kernel): ", screenStart-*
 
 .here_start:
+print "here_start: ", STR$~(here_start)
 
 .embedded:
     ;incbin "play.q"
