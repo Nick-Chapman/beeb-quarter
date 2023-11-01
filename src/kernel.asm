@@ -136,34 +136,6 @@ endmacro
     jmp osasci ; has special handling for 13 -> NL
     }
 
-.printHexA: { ;; clobbers A
-    sta mod1+1
-    sta mod2+1
-    txa : pha ; save X (killing A)
-    lda #',' : jsr osasci
-    .mod1 lda #&33 ; fixme
-    and #&f0 : lsr a : lsr a : lsr a : lsr a : tax
-    lda digits,x
-    jsr osasci
-    .mod2 lda #&44 ; fixme
-    and #&f : tax
-    lda digits,x
-    jsr osasci
-    pla : tax ; restore X (killing A)
-    rts
-.digits EQUS "0123456789abcdef" }
-
-;; .debug_comma: ;; clobbers A
-;;     ;; show where here is & value in A - TODO: also show y
-;;     pha
-;;     newline
-;;     lda hereVar+1 : jsr printHexA
-;;     lda hereVar : jsr printHexA
-;;     lda #'=' : jsr osasci
-;;     pla
-;; 	jsr printHexA
-;;     rts
-
 .print_message: { ; just for dev; used by stop/puts
     tya : pha
     ldy #0
@@ -205,16 +177,13 @@ endmacro
 d0 = 0
 
 ._set_dispatch_table:
-    ;newline : puts "set_dispatch_table" : newline
     jsr _key ; TODO use raw_key, avoid popping from PS
     popA ;lo
     asl a
     sta mod+1
     popA ;hi
-
     jsr _here_pointer
     jsr _fetch ; clobbers Y ; TODO: inline, avoiding PS manip
-
     .mod ldy #&33
     popA ;lo
     sta dispatch_table,y
@@ -335,11 +304,6 @@ defword "+"                             , d21:d22=*
 
 defword "-"                             , d22:d23=*
 ._minus: ;; PH PL - QH QL
-    ;newline : puts "minus(pre): "
-    ;lda PS+3,x : jsr printHexA
-    ;lda PS+2,x : jsr printHexA
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
     sec
     lda PS+2, x ; PL
     sbc PS+0, x ; QL
@@ -348,10 +312,6 @@ defword "-"                             , d22:d23=*
     sbc PS+1, x ; QH
     sta PS+3, x
     inx : inx
-    ;newline : puts "minus(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
     rts
 
 xdefword "*"                             , d23:d24=*
@@ -359,44 +319,22 @@ xdefword "/mod"                          , d24:d25=*
 
 defword "<"                             , d25:d26=*
 ._less_than: {  ;; PH PL < QH QL
-    ;newline : puts "less(pre): "
-    ;lda PS+3,x : jsr printHexA
-    ;lda PS+2,x : jsr printHexA
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;; compare high order bytes first
-    ;; cmp is like subtract. do: P - Q
-    ;; check carry flag
-    ;; if it (remains) set we didn't borrow
-    ;; if it gets cleared we borrowed (so Q>P)
-    ;newline : puts "test hi"
     lda PS+3, x ; PH
     cmp PS+1, x ; QH
 	bcc less
     bne notLess
-    ;; drop here only if hi-bytes are equal
-    beq equal ; should not be needed
-    stop "impossible"
-.equal:
-    ;newline : puts "test lo"
     lda PS+2, x ; PL
     cmp PS+0, x ; QL
     bcc less
 .notLess:
-    ;newline : puts "NOT-LESS"
     lda #0 ; false
     jmp store
 .less:
-    ;newline : puts "LESS"
     lda #&ff ; true
 .store:
     sta PS+2, x
     sta PS+3, x
     inx : inx
-    ;newline : puts "less(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
     rts
     }
 
@@ -447,18 +385,11 @@ defword "!"                             , d28:d29=*
 
 defword "c@"                            , d29:d30=*
 ._c_fetch:
-    ;newline : puts "c_fetch(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
     PsTopToTemp
     ldy #0
     lda (temp),y
 	sta PS+0, x ; lo-value
 	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
-    ;newline : puts "c_fetch(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
     rts
 
 xdefword "c!"                            , d30:d31=*
@@ -490,21 +421,20 @@ defword "c,"                            , d33:d34=*
 defword "lit"                           , d34:d35=*
 	;; ( -- x )
 ._lit:
+    ;; TODO: macroize the next 4 steps
     pla
     sta temp
     pla
     sta temp+1
-
     ldy #2
     lda (temp),y
     pushA ;hi
     ldy #1
     lda (temp),y
     pushA ;lo
-
     incWord temp
     incWord temp
-
+    ;; TODO: macroize the next 4 steps
     lda temp+1
     pha
     lda temp
@@ -543,14 +473,11 @@ defword "0branch"                       , d38:d39=*
     inx : ora PS-1, x
     bne untaken
 .taken:
-    ;newline : puts "taken"
     ldy #1 : lda (temp),y
 	jmp bump
 .untaken:
-    ;newline : puts "untaken"
     lda #2
 .bump:
-    ;pha : newline : puts "dist: " : pla : pha : jsr printHexA : newline : pla
     clc
     adc temp
     sta temp
@@ -649,6 +576,7 @@ defword "immediate^"                    , d46:d47=*
     rts
 
 xdefword "hidden^"                       , d47:d48=*
+
 xdefword "entry,"                        , d48:d49=*
 ._entry_comma: ;; ( name -- )
     popA ;lo-name
@@ -863,7 +791,6 @@ print "kernel size: ", *-start
 print "here_start: &", STR$~(here_start)
 
 .embedded:
-    ;incbin "play.q"
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
     equb 0
