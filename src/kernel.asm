@@ -1,4 +1,4 @@
-mode = 7
+mode = 0
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -23,7 +23,7 @@ org &0
 .embeddedPtr skip 2
 .msgPtr skip 2
 
-guard screenStart
+;guard screenStart
 org kernelStart
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -182,7 +182,7 @@ endmacro
 
 .raw_key: {
     jsr indirect
-    ;; pha : jsr writeChar : pla ;; echo
+    pha : jsr writeChar : pla ;; echo
     rts
 .indirect:
     jmp (indirection) ; TODO: prefer SMC
@@ -269,7 +269,7 @@ defword "dup"                           , d11:d12=*
     sta PS+1, x
     rts
 
-xdefword "swap"                          , d12:d13=*
+defword "swap"                          , d12:d13=*
 ._swap:
     ldy PS+0, x
     lda PS+2, x
@@ -281,7 +281,7 @@ xdefword "swap"                          , d12:d13=*
     sta PS+1, x
     rts
 
-xdefword "drop"                          , d13:d14=*
+defword "drop"                          , d13:d14=*
 ._drop:
     inx : inx
     rts
@@ -298,7 +298,7 @@ xdefword "over"                          , d14:d15=*
 xdefword ">r"                            , d15:d16=*
 xdefword "r>"                            , d16:d17=*
 
-xdefword "0"                             , d17:d18=*
+defword "0"                             , d17:d18=*
 ._zero:
     lda #0
     pushA
@@ -314,7 +314,10 @@ defword "1"                             , d18:d19=*
     pushA ;lo
     rts
 
-xdefword "xor"                           , d19:d20=*
+defword "xor"                           , d19:d20=*
+    stop "xor"
+    rts
+
 xdefword "/2"                            , d20:d21=*
 
 defword "+"                             , d21:d22=*
@@ -330,7 +333,7 @@ defword "+"                             , d21:d22=*
     inx : inx
     rts
 
-xdefword "-"                             , d22:d23=*
+defword "-"                             , d22:d23=*
 ._minus: ;; PH PL - QH QL
     ;newline : puts "minus(pre): "
     ;lda PS+3,x : jsr printHexA
@@ -354,7 +357,7 @@ xdefword "-"                             , d22:d23=*
 xdefword "*"                             , d23:d24=*
 xdefword "/mod"                          , d24:d25=*
 
-xdefword "<"                             , d25:d26=*
+defword "<"                             , d25:d26=*
 ._less_than: {  ;; PH PL < QH QL
     ;newline : puts "less(pre): "
     ;lda PS+3,x : jsr printHexA
@@ -428,7 +431,7 @@ defword "@"                             , d27:d28=*
 	sta PS+1, x ; hi-value
     rts
 
-xdefword "!"                             , d28:d29=*
+defword "!"                             , d28:d29=*
 ._store: ; ( value addr -- )
     popA ;lo-addr
     sta temp
@@ -442,7 +445,7 @@ xdefword "!"                             , d28:d29=*
     sta (temp),y
     rts
 
-xdefword "c@"                            , d29:d30=*
+defword "c@"                            , d29:d30=*
 ._c_fetch:
     ;newline : puts "c_fetch(pre): "
     ;lda PS+1,x : jsr printHexA
@@ -476,7 +479,7 @@ defword ","                             , d32:d33=*
     commaHereBump ; the only extra thing
     rts
 
-xdefword "c,"                            , d33:d34=*
+defword "c,"                            , d33:d34=*
     ;; ( char -- )
 ._c_comma:
     popA
@@ -524,13 +527,13 @@ defword "jump"                          , d36:d37=*
     pla
     jmp _execute
 
-xdefword "exit"                          , d37:d38=*
+defword "exit"                          , d37:d38=*
 ._exit:
     pla
     pla
     rts
 
-xdefword "0branch"                       , d38:d39=*
+defword "0branch"                       , d38:d39=*
 ._branch0: {
     pla
     sta temp
@@ -562,7 +565,9 @@ xdefword "0branch"                       , d38:d39=*
     rts
     }
 
-xdefword "branch"                        , d39:d40=*
+defword "branch"                        , d39:d40=*
+	stop "branch"
+    rts
 
 xdefword "ret,"                          , d40:d41=*
 ._write_ret:
@@ -672,7 +677,7 @@ defword "latest"                        , d49:d50=*
     pushA
     rts
 
-xdefword "key"                           , d50:d51=*
+defword "key"                           , d50:d51=*
 ._key:
     lda #0
     pushA ;hi
@@ -852,7 +857,7 @@ equw U ; 7f DEL
 assert ((dispatch_table_end - dispatch_table) = 256)
 
 print "kernel size: ", *-start
-print "bytes left (after kernel): ", screenStart-*
+;print "bytes left (after kernel): ", screenStart-*
 
 .here_start:
 print "here_start: &", STR$~(here_start)
@@ -860,7 +865,7 @@ print "here_start: &", STR$~(here_start)
 .embedded:
     ;incbin "play.q"
     incbin "../quarter-forth/f/quarter.q"
-    incbin "../quarter-forth/f/forth.f-prefix"
+    incbin "../quarter-forth/f/forth.f"
     equb 0
 
 print "embedded size: ", *-embedded
