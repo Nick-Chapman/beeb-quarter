@@ -1,5 +1,5 @@
 Echo = TRUE
-Mode = 0
+Mode = 7 ;; Can't use Mode0. We have reached embedded text in the screen area.
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -258,7 +258,11 @@ xdefword "dispatch"                      , d0:d1=*
 
 xdefword "reset"                         , d1:d2=*
 xdefword "bye"                           , d2:d3=*
-xdefword "crash"                         , d3:d4=*
+
+defword "crash"                         , d3:d4=*
+    stop "crash"
+    rts
+
 xdefword "startup-is-complete"           , d4:d5=*
 
 xdefword "crash-only-during-startup"     , d5:d6=*
@@ -494,7 +498,7 @@ defword "lit"                           , d34:d35=*
     PushRsTemp
     rts
 
-xdefword "execute"                       , d35:d36=*
+defword "execute"                       , d35:d36=*
 	;; ( xt -- )
 ._execute: {
     popA
@@ -560,7 +564,7 @@ defword "branch"                        , d39:d40=*
     rts
     }
 
-xdefword "ret,"                          , d40:d41=*
+defword "ret,"                          , d40:d41=*
     ;; ( -- )
 ._write_ret:
     lda #rtsOpCode
@@ -644,7 +648,7 @@ defword "immediate^"                    , d46:d47=*
 
 xdefword "hidden^"                       , d47:d48=*
 
-xdefword "entry,"                        , d48:d49=*
+defword "entry,"                        , d48:d49=*
 ._entry_comma: ;; ( string -- )
     popA
     commaHereBump
