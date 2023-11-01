@@ -221,7 +221,7 @@ endmacro
 
 .zeroName: equs 0
 macro xdefword NAME,PREV ; NAME ignored. def wont be found ;; TODO: kill when unused
-equw zeroName, PREV : equb 0
+equw zeroName, PREV : equb HiddenFlag
 endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -668,11 +668,18 @@ defword "immediate?"                    , d44:d45=*
 defword "hidden?"                       , d45:d46=*
     ;; ( xt -- bool )
 ._hidden_query:
-    popA
-    popA
-    lda #0 ;; TODO: support properly (look at the flag!)
-    pushA
-    pushA
+    PsTopToTemp
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #255 ; -1
+    lda (temp),y
+    and #HiddenFlag
+    ;; y is conveniently &ff(true). incrementing will make it false
+    bne yes
+    iny
+.yes:
+    ; Y is 00/ff, which if double stored, is false/true
+    sty PS+0, x ; lo
+    sty PS+1, x ; hi
     rts
 
 defword "immediate^"                    , d46:d47=*
@@ -736,7 +743,7 @@ xdefword "set-key"                       , d51:d52=*
 xdefword "get-key"                       , d52:d53=*
 xdefword "echo-enabled"                  , d53:d54=*
 
-defword "echo-off"                      , d54:d55=*
+xdefword "echo-off"                      , d54:d55=*
 defword "echo-on"                       , d55:d56=*
 	lda #1
     sta echo_enabled
