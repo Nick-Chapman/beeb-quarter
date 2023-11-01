@@ -1,5 +1,5 @@
 Echo = TRUE
-Mode = 7
+Mode = 0
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -96,7 +96,6 @@ macro PushRsTemp
     pha
     lda temp
     pha
-    rts
 endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -252,7 +251,7 @@ xdefword "dispatch"                      , d0:d1=*
     rts
 .unset:
     jsr osnewl
-    .mod lda #0 : jsr oswrch ; SMC
+    .mod lda #&33 : jsr oswrch ; SMC
     lda #'?' : jsr oswrch
     jmp spin
     }
@@ -395,7 +394,7 @@ defword "<"                             , d25:d26=*
     rts
     }
 
-xdefword "="                             , d26:d27=*
+defword "="                             , d26:d27=*
 	;; ( numP numQ -- bool )
 ._equal: {
     lda PS+2, x ; PL
@@ -493,6 +492,7 @@ defword "lit"                           , d34:d35=*
     incWord temp
     incWord temp
     PushRsTemp
+    rts
 
 xdefword "execute"                       , d35:d36=*
 	;; ( xt -- )
@@ -525,15 +525,17 @@ defword "0branch"                       , d38:d39=*
     inx : ora PS-1, x
     bne untaken
 .taken:
+    ldy #2 : lda (temp),y : sta mod+1
     ldy #1 : lda (temp),y
 	jmp bump
 .untaken:
+    lda #0 : sta mod+1
     lda #2
 .bump:
     clc
     adc temp
     sta temp
-    lda #0 ;; TODO: should be hi-byte of dest for long branches. Use SMC !
+    .mod lda #&33 ; SMC
     adc temp+1
     sta temp+1
     ;; TODO: avoid saving back into temp. just push directly to return-stack
@@ -542,8 +544,21 @@ defword "0branch"                       , d38:d39=*
     }
 
 defword "branch"                        , d39:d40=*
-	stop "branch"
+    ;; ( -- )
+    {
+    PopRsTemp
+    ldy #2 : lda (temp),y : sta mod+1
+    ldy #1 : lda (temp),y
+    clc
+    adc temp
+    sta temp
+    .mod lda #&33 ; SMC
+    adc temp+1
+    sta temp+1
+    ;; TODO: avoid saving back into temp. just push directly to return-stack
+	PushRsTemp
     rts
+    }
 
 xdefword "ret,"                          , d40:d41=*
     ;; ( -- )
