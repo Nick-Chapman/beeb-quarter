@@ -1,4 +1,4 @@
-Echo = TRUE
+Echo = FALSE ;; initial state of echo-enabled
 Mode = 7 ;; Can't use Mode0. We have reached embedded text in the screen area.
 
 ImmediateFlag = &40
@@ -22,12 +22,14 @@ org &0
 .temp skip 2 ; used by _lit & elsewhere
 .embeddedPtr skip 2
 .msgPtr skip 2
-
 ;guard screenStart
 org kernelStart
 
 .start:
     jmp main
+
+.echo_enabled equb Echo ; controls echo in readChar
+.is_startup_complete equb 0 ; controls crash-only-during-startup
 
 ;;; just for dev/debug
 .printHexA: { ;; clobbers A
@@ -190,7 +192,8 @@ endmacro
 
 .readChar: {
     jsr indirect
-    IF Echo : pha : jsr writeChar : pla : ENDIF
+    ldy echo_enabled
+    beq no : pha : jsr writeChar : pla : .no
     rts
 .indirect:
     jmp (indirection) ; TODO: prefer SMC
@@ -263,12 +266,22 @@ defword "crash"                         , d3:d4=*
     stop "crash"
     rts
 
-xdefword "startup-is-complete"           , d4:d5=*
+defword "startup-is-complete"           , d4:d5=*
+	lda #1
+    sta is_startup_complete
+    rts
 
 defword "crash-only-during-startup"     , d5:d6=*
-._crash_startup:
-    stop "crash_only_during_startup"
+._crash_startup: {
+    lda is_startup_complete
+    bne no
+    newline
+    puts "crash-during-startup"
+    newline
+    jsr spin
+.no:
     rts
+    }
 
 xdefword "sp"                            , d6:d7=*
 xdefword "sp0"                           , d7:d8=*
@@ -708,8 +721,12 @@ defword "key"                           , d50:d51=*
 xdefword "set-key"                       , d51:d52=*
 xdefword "get-key"                       , d52:d53=*
 xdefword "echo-enabled"                  , d53:d54=*
-xdefword "echo-off"                      , d54:d55=*
-xdefword "echo-on"                       , d55:d56=*
+
+defword "echo-off"                      , d54:d55=*
+defword "echo-on"                       , d55:d56=*
+	lda #1
+    sta echo_enabled
+    rts
 
 defword "emit"                          , d56:d57=*
     ;; ( char -- )
@@ -879,6 +896,7 @@ print "here_start: &", STR$~(here_start)
 .embedded:
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
+    incbin "bbc-start.f"
     equb 0
 
 print "embedded size: &", STR$~(*-embedded)
