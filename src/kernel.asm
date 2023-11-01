@@ -1,4 +1,5 @@
-mode = 0
+Echo = TRUE
+Mode = 7
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -8,12 +9,11 @@ rtsOpCode = &60
 
 osrdch = &ffe0
 osasci = &ffe3
+osnewl = &ffe7
 oswrch = &ffee
 
 kernelStart = &1900 ;; 1100 NO, 1200 OK
 screenStart = &3000
-
-PS = &90 ; Was 0. Bad interaction with osasci
 
 guard &10
 org &0
@@ -25,6 +25,58 @@ org &0
 
 ;guard screenStart
 org kernelStart
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Parameter Stack (PS)
+
+;;; The parameter stack lives in zero-page growing downwards from &90.
+;;; The X register indexes the stack top.
+;;; For byte access we use indexed addressing: "PS+N, x".
+;;; Each stack entry is 16-bits (2 bytes).
+;;; The hi-byte is always deeper in the stack than the lo-byte, so:
+;;; When pushing (pushA): push hi; push lo.
+;;; When popping (popA): pop lo; pop hi.
+
+PS = &90
+
+macro pushA
+    dex
+	sta PS, x
+endmacro
+
+macro popA
+	lda PS, x
+    inx
+endmacro
+
+macro PsTopToTemp
+    lda PS+0, x
+    sta temp
+	lda PS+1, x
+    sta temp+1
+endmacro
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Return Stack (RS)
+
+;;; The return stack uses the 6502 hardware stack, which lives in page-1
+;;; To push/pop to the return-stack, we use: jsr/rts, or: pha/pla
+;;; uppercase Push/Pop indicates action on 2 bytes
+
+macro PopRsTemp
+    pla
+    sta temp
+    pla
+    sta temp+1
+endmacro
+
+macro PushRsTemp
+    lda temp+1
+    pha
+    lda temp
+    pha
+    rts
+endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -51,23 +103,6 @@ macro commaHereBump ; takes value in A
     incWord hereVar
 endmacro
 
-macro pushA ; hi-byte then lo-byte
-    dex
-	sta PS, x
-endmacro
-
-macro popA ; lo-byte then hi-byte
-	lda PS, x
-    inx
-endmacro
-
-macro PsTopToTemp
-    lda PS+0, x ; lo-addr
-    sta temp
-	lda PS+1, x ; hi-addr
-    sta temp+1
-endmacro
-
 macro puts message
     copy16i msg, msgPtr
     jmp after
@@ -76,32 +111,15 @@ macro puts message
     jsr print_message
 endmacro
 
-macro newline ;; no clobber
-    pha : lda #13 : jsr osasci : pla ; TODO: call os newline direct. avoid clober A
+macro newline ;; no clobber A
+    pha : jsr osnewl : pla
 endmacro
 
 macro stop message
-    jsr _cr
+    jsr osnewl
     puts "stop:"
     puts message : newline
     jmp spin
-endmacro
-
-;;; Sadly we can't redifine symbols in beebasm
-;;; so we have to explicitly pass the previous def to setup the linked list
-macro defword NAME,PREV
-.name: equs NAME, 0
-equw name, PREV : equb 0
-endmacro
-
-;macro defwordImmediate NAME,PREV
-;.name: equs NAME, 0
-;equw name, PREV : equb ImmediateFlag
-;endmacro
-
-.zeroName: equs 0
-macro xdefword NAME,PREV ; NAME ignored. def wont be found
-equw zeroName, PREV : equb 0
 endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -122,7 +140,7 @@ endmacro
 
 .cls:
     lda #22 : jsr oswrch
-    lda #mode : jsr oswrch
+    lda #Mode : jsr oswrch
     rts
 
 .spin:
@@ -147,14 +165,15 @@ endmacro
     bne loop
 .done:
     pla : tay
-    rts }
+    rts
+    }
 
 ._nop:
     rts
 
-.raw_key: {
+.readChar: {
     jsr indirect
-    pha : jsr writeChar : pla ;; echo
+    IF Echo : pha : jsr writeChar : pla : ENDIF
     rts
 .indirect:
     jmp (indirection) ; TODO: prefer SMC
@@ -173,41 +192,49 @@ endmacro
     }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Quarter/Forth kernel primitives (leading "_")
+
+macro defword NAME,PREV
+.name: equs NAME, 0
+equw name, PREV : equb 0
+endmacro
+
+.zeroName: equs 0
+macro xdefword NAME,PREV ; NAME ignored. def wont be found ;; TODO: kill when unused
+equw zeroName, PREV : equb 0
+endmacro
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 d0 = 0
 
-._set_dispatch_table:
-    jsr _key ; TODO use raw_key, avoid popping from PS
-    popA ;lo
+._set_dispatch:
+    jsr readChar
     asl a
-    sta mod+1
-    popA ;hi
-    jsr _here_pointer
-    jsr _fetch ; clobbers Y ; TODO: inline, avoiding PS manip
-    .mod ldy #&33
-    popA ;lo
+    tay
+    lda hereVar
     sta dispatch_table,y
-    popA ;hi
+    lda hereVar+1
     sta dispatch_table+1,y
 	rts
 
 xdefword "dispatch"                      , d0:d1=*
 ._dispatch: {
-    popA ;lo
-    sta mod+1
+    popA
+    sta mod+1 ; for unset error
     asl a
     tay
-    popA ;hi
+    inx ;pop/ignore hi-byte
     lda dispatch_table+1,y
-    pushA ;hi
+    pushA
     lda dispatch_table,y
-    pushA ;lo
+    pushA
 	ora PS+1, x
     beq unset
     rts
 .unset:
-    jsr _cr
-    .mod lda #0 : jsr oswrch
+    jsr osnewl
+    .mod lda #0 : jsr oswrch ; SMC
     lda #'?' : jsr oswrch
     jmp spin
     }
@@ -218,7 +245,7 @@ xdefword "crash"                         , d3:d4=*
 xdefword "startup-is-complete"           , d4:d5=*
 
 xdefword "crash-only-during-startup"     , d5:d6=*
-._crash_only_during_startup:
+._crash_startup:
     stop "crash_only_during_startup"
     rts
 
@@ -239,6 +266,7 @@ defword "dup"                           , d11:d12=*
     rts
 
 defword "swap"                          , d12:d13=*
+	;; ( x y -- y x )
 ._swap:
     ldy PS+0, x
     lda PS+2, x
@@ -251,11 +279,13 @@ defword "swap"                          , d12:d13=*
     rts
 
 defword "drop"                          , d13:d14=*
+	;; ( x -- )
 ._drop:
     inx : inx
     rts
 
 xdefword "over"                          , d14:d15=*
+	;; ( x y -- x y x )
 ._over:
     dex : dex
     lda PS+4, x
@@ -268,6 +298,7 @@ xdefword ">r"                            , d15:d16=*
 xdefword "r>"                            , d16:d17=*
 
 defword "0"                             , d17:d18=*
+	;; ( -- num )
 ._zero:
     lda #0
     pushA
@@ -278,9 +309,9 @@ defword "1"                             , d18:d19=*
 	;; ( -- num )
 ._one:
     lda #0
-    pushA ;hi
+    pushA
     lda #1
-    pushA ;lo
+    pushA
     rts
 
 defword "xor"                           , d19:d20=*
@@ -290,7 +321,7 @@ defword "xor"                           , d19:d20=*
 xdefword "/2"                            , d20:d21=*
 
 defword "+"                             , d21:d22=*
-    ;; ( P Q -- P+Q )
+	;; ( numP numQ -- num )
 ._plus:
     clc
     lda PS+2, x ; PL
@@ -303,7 +334,8 @@ defword "+"                             , d21:d22=*
     rts
 
 defword "-"                             , d22:d23=*
-._minus: ;; PH PL - QH QL
+	;; ( numP numQ -- num )
+._minus:
     sec
     lda PS+2, x ; PL
     sbc PS+0, x ; QL
@@ -318,7 +350,8 @@ xdefword "*"                             , d23:d24=*
 xdefword "/mod"                          , d24:d25=*
 
 defword "<"                             , d25:d26=*
-._less_than: {  ;; PH PL < QH QL
+	;; ( numP numQ -- bool )
+._less_than: {
     lda PS+3, x ; PH
     cmp PS+1, x ; QH
 	bcc less
@@ -339,7 +372,8 @@ defword "<"                             , d25:d26=*
     }
 
 xdefword "="                             , d26:d27=*
-._equal: { ;; PH PL = QH QL
+	;; ( numP numQ -- bool )
+._equal: {
     lda PS+2, x ; PL
     cmp PS+0, x ; QL
     bne diff
@@ -370,11 +404,13 @@ defword "@"                             , d27:d28=*
     rts
 
 defword "!"                             , d28:d29=*
-._store: ; ( value addr -- )
+    ;; ( value addr -- )
+._store:
     popA ;lo-addr
     sta temp
     popA ;hi-addr
     sta temp+1
+
     popA ;lo-value
     ldy #0
     sta (temp),y
@@ -406,8 +442,10 @@ defword "here-pointer"                  , d31:d32=*
 defword ","                             , d32:d33=*
     ;; ( x -- )
 ._comma:
-    jsr _c_comma
-    commaHereBump ; the only extra thing
+    popA
+    commaHereBump
+    popA
+    commaHereBump
     rts
 
 defword "c,"                            , d33:d34=*
@@ -415,39 +453,31 @@ defword "c,"                            , d33:d34=*
 ._c_comma:
     popA
     commaHereBump
-    popA
+	inx
     rts
 
 defword "lit"                           , d34:d35=*
 	;; ( -- x )
 ._lit:
-    ;; TODO: macroize the next 4 steps
-    pla
-    sta temp
-    pla
-    sta temp+1
+    PopRsTemp
     ldy #2
     lda (temp),y
-    pushA ;hi
+    pushA
     ldy #1
     lda (temp),y
-    pushA ;lo
+    pushA
     incWord temp
     incWord temp
-    ;; TODO: macroize the next 4 steps
-    lda temp+1
-    pha
-    lda temp
-    pha
-    rts
+    PushRsTemp
 
 xdefword "execute"                       , d35:d36=*
+	;; ( xt -- )
 ._execute: {
-    popA ;lo
+    popA
     sta mod+1
-    popA ;hi
+    popA
     sta mod+2
-    .mod jmp 0
+    .mod jmp 0 ; SMC
     }
 
 defword "jump"                          , d36:d37=*
@@ -464,11 +494,9 @@ defword "exit"                          , d37:d38=*
     rts
 
 defword "0branch"                       , d38:d39=*
+    ;; ( num -- )
 ._branch0: {
-    pla
-    sta temp
-    pla
-    sta temp+1
+    PopRsTemp
     popA
     inx : ora PS-1, x
     bne untaken
@@ -485,10 +513,7 @@ defword "0branch"                       , d38:d39=*
     adc temp+1
     sta temp+1
     ;; TODO: avoid saving back into temp. just push directly to return-stack
-    lda temp+1
-    pha
-    lda temp
-    pha
+	PushRsTemp
     rts
     }
 
@@ -497,6 +522,7 @@ defword "branch"                        , d39:d40=*
     rts
 
 xdefword "ret,"                          , d40:d41=*
+    ;; ( -- )
 ._write_ret:
     lda #rtsOpCode
     commaHereBump
@@ -514,27 +540,29 @@ defword "compile,"                      , d41:d42=*
     rts
 
 xdefword "xt->name"                      , d42:d43=*
+    ;; ( xt -- string )
 ._xt_name:
     PsTopToTemp
     dec temp+1
     ldy #251 ; -5
     lda (temp),y
-	sta PS+0, x ; lo-value
+	sta PS+0, x
     ldy #252 ; -4
     lda (temp),y
-	sta PS+1, x ; hi-value
+	sta PS+1, x
     rts
 
 xdefword "xt->next"                      , d43:d44=*
+    ;; ( xt -- xt )
 ._xt_next:
     PsTopToTemp
     dec temp+1
     ldy #253 ; -3
     lda (temp),y
-	sta PS+0, x ; lo-value
+	sta PS+0, x
     ldy #254 ; -2
     lda (temp),y
-	sta PS+1, x ; hi-value
+	sta PS+1, x
     rts
 
 xdefword "immediate?"                    , d44:d45=*
@@ -556,11 +584,11 @@ xdefword "immediate?"                    , d44:d45=*
     }
 
 xdefword "hidden?"                       , d45:d46=*
-    ;; ( xt -- bool ) ;; TODO: support
+    ;; ( xt -- bool )
 ._hidden_query:
     popA
     popA
-    lda #0
+    lda #0 ;; TODO: support properly
     pushA
     pushA
     rts
@@ -578,14 +606,14 @@ defword "immediate^"                    , d46:d47=*
 xdefword "hidden^"                       , d47:d48=*
 
 xdefword "entry,"                        , d48:d49=*
-._entry_comma: ;; ( name -- )
-    popA ;lo-name
+._entry_comma: ;; ( string -- )
+    popA
     commaHereBump
-    popA ;hi-name
+    popA
     commaHereBump
-    lda latestVar ;lo-prev
+    lda latestVar
     commaHereBump
-    lda latestVar+1 ;hi-prev
+    lda latestVar+1
     commaHereBump
     lda #0 ; byte for immediate/hidden flags
     commaHereBump
@@ -597,7 +625,7 @@ xdefword "entry,"                        , d48:d49=*
     rts
 
 defword "latest"                        , d49:d50=*
-    ;; ( -- a )
+    ;; ( -- xt )
 ._latest:
     lda latestVar+1
     pushA
@@ -606,11 +634,12 @@ defword "latest"                        , d49:d50=*
     rts
 
 defword "key"                           , d50:d51=*
+    ;; ( -- char )
 ._key:
     lda #0
-    pushA ;hi
-    jsr raw_key
-    pushA ;lo
+    pushA
+    jsr readChar
+    pushA
     rts
 
 xdefword "set-key"                       , d51:d52=*
@@ -622,16 +651,15 @@ xdefword "echo-on"                       , d55:d56=*
 defword "emit"                          , d56:d57=*
     ;; ( char -- )
 ._emit:
-	popA
+    popA
     jsr writeChar
-	popA
+    inx
     rts
 
 defword "cr"                            , d57:d58=*
 ._cr:
     ;; ( -- )
-    lda #13
-    jmp osasci
+    jmp osnewl
 
 xdefword "cls"                           , d58:d59=*
 
@@ -640,152 +668,143 @@ last = d59
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-print "kernel size (sans dispatch table): ", *-start
+print "kernel size (sans dispatch table): &", STR$~(*-start)
 
 U = 0
-.dispatch_table:
-
-equw U ; 0
-equw U ; 1
-equw U ; 2
-equw U ; 3
-equw U ; 4
-equw U ; 5
-equw U ; 6
-equw U ; 7
-equw U ; 8
-equw U ; 9
-equw _nop ; a
-equw U ; b
-equw U ; c
-equw U ; d
-equw U ; e
-equw U ; f
-
-equw U ; 10
-equw U ; 11
-equw U ; 12
-equw U ; 13
-equw U ; 14
-equw U ; 15
-equw U ; 16
-equw U ; 17
-equw U ; 18
-equw U ; 19
-equw U ; 1a
-equw U ; 1b
-equw U ; 1c
-equw U ; 1d
-equw U ; 1e
-equw U ; 1f
-
-equw _nop ; 20 space
-equw _store ; 21 !
-equw U ; 22 "
-equw U ; 23 #
-equw U ; 24 $
-equw U ; 25 %
-equw _key ; 26 & ;; TEMP, make & be _key, because that's what I get when press ^ on my keyboard
-equw U ; 27 '
-equw U ; 28 (
-equw U ; 29 )
-equw U ; 2a *
-equw _plus ; 2b +
-equw _comma ; 2c ,
-equw _minus ; 2d -
-equw _emit ; 2e .
-equw U ; 2f /
-
-equw _zero ; 30 0
-equw _one ; 31 1
-equw U ; 32 2
-equw U ; 33 3
-equw U ; 34 4
-equw U ; 35 5
-equw U ; 36 6
-equw U ; 37 7
-equw U ; 38 8
-equw U ; 39 9
-equw _set_dispatch_table ; 3a :
-equw _write_ret ; 3b ;
-equw _less_than ; 3c <
-equw _equal ; 3d =
-equw _compile_comma ; 3e >
-equw _dispatch ; 3f ?
-
-equw _fetch ; 40 @
-equw _crash_only_during_startup ; 41 A
-equw _branch0 ; 42 B
-equw _c_fetch ; 43 C
-equw _dup ; 44 D
-equw _entry_comma ; 45 E
-equw U ; 46 F
-equw _xt_next ; 47 G
-equw _here_pointer ; 48 H
-equw _immediate_query ; 49 I
-equw _jump ; 4a J
-equw U ; 4b K
-equw _lit ; 4c L
-equw _cr ; 4d M
-equw _xt_name ; 4e N
-equw _over ; 4f O
-
-equw _drop ; 50 P
-equw U ; 51 Q
-equw U ; 52 R
-equw U ; 53 S
-equw U ; 54 T
-equw U ; 55 U
-equw _execute ; 56 V
-equw _swap ; 57 W
-equw _exit ; 58 X
-equw _hidden_query ; 59 Y
-equw _latest ; 5a Z
-equw U ; 5b [
-equw U ; 5c \
-equw U ; 5d ]
-equw _key ; 5e ^
-equw U ; 5f _
-
-equw _c_comma ; 60 `
-equw U ; 61 a
-equw U ; 62 b
-equw U ; 63 c
-equw U ; 64 d
-equw U ; 65 e
-equw U ; 66 f
-equw U ; 67 g
-equw U ; 68 h
-equw U ; 69 i
-equw U ; 6a j
-equw U ; 6b k
-equw U ; 6c l
-equw U ; 6d m
-equw U ; 6e n
-equw U ; 6f o
-
-equw U ; 70 p
-equw U ; 71 q
-equw U ; 72 r
-equw U ; 73 s
-equw U ; 74 t
-equw U ; 75 u
-equw U ; 76 v
-equw U ; 77 w
-equw U ; 78 x
-equw U ; 79 y
-equw U ; 7a z
-equw U ; 7b {
-equw U ; 7c |
-equw U ; 7d }
-equw U ; 7e ~
-equw U ; 7f DEL
+.dispatch_table:        ; hex 'char'
+equw U                  ; 0
+equw U                  ; 1
+equw U                  ; 2
+equw U                  ; 3
+equw U                  ; 4
+equw U                  ; 5
+equw U                  ; 6
+equw U                  ; 7
+equw U                  ; 8
+equw U                  ; 9
+equw _nop               ; a
+equw U                  ; b
+equw U                  ; c
+equw U                  ; d
+equw U                  ; e
+equw U                  ; f
+equw U                  ; 10
+equw U                  ; 11
+equw U                  ; 12
+equw U                  ; 13
+equw U                  ; 14
+equw U                  ; 15
+equw U                  ; 16
+equw U                  ; 17
+equw U                  ; 18
+equw U                  ; 19
+equw U                  ; 1a
+equw U                  ; 1b
+equw U                  ; 1c
+equw U                  ; 1d
+equw U                  ; 1e
+equw U                  ; 1f
+equw _nop               ; 20 space
+equw _store             ; 21 !
+equw U                  ; 22 "
+equw U                  ; 23 #
+equw U                  ; 24 $
+equw U                  ; 25 %
+equw _key               ; 26 & (laptop: ^key)
+equw U                  ; 27 '
+equw U                  ; 28 (
+equw U                  ; 29 )
+equw U                  ; 2a *
+equw _plus              ; 2b +
+equw _comma             ; 2c ,
+equw _minus             ; 2d -
+equw _emit              ; 2e .
+equw U                  ; 2f /
+equw _zero              ; 30 0
+equw _one               ; 31 1
+equw U                  ; 32 2
+equw U                  ; 33 3
+equw U                  ; 34 4
+equw U                  ; 35 5
+equw U                  ; 36 6
+equw U                  ; 37 7
+equw U                  ; 38 8
+equw U                  ; 39 9
+equw _set_dispatch      ; 3a :
+equw _write_ret         ; 3b ;
+equw _less_than         ; 3c <
+equw _equal             ; 3d =
+equw _compile_comma     ; 3e >
+equw _dispatch          ; 3f ?
+equw _fetch             ; 40 @
+equw _crash_startup     ; 41 A
+equw _branch0           ; 42 B
+equw _c_fetch           ; 43 C
+equw _dup               ; 44 D
+equw _entry_comma       ; 45 E
+equw U                  ; 46 F
+equw _xt_next           ; 47 G
+equw _here_pointer      ; 48 H
+equw _immediate_query   ; 49 I
+equw _jump              ; 4a J
+equw U                  ; 4b K
+equw _lit               ; 4c L
+equw _cr                ; 4d M
+equw _xt_name           ; 4e N
+equw _over              ; 4f O
+equw _drop              ; 50 P
+equw U                  ; 51 Q
+equw U                  ; 52 R
+equw U                  ; 53 S
+equw U                  ; 54 T
+equw U                  ; 55 U
+equw _execute           ; 56 V
+equw _swap              ; 57 W
+equw _exit              ; 58 X
+equw _hidden_query      ; 59 Y
+equw _latest            ; 5a Z
+equw U                  ; 5b [
+equw U                  ; 5c \
+equw U                  ; 5d ]
+equw _key               ; 5e ^ (laptop: =key)
+equw U                  ; 5f _
+equw _c_comma           ; 60 `
+equw U                  ; 61 a
+equw U                  ; 62 b
+equw U                  ; 63 c
+equw U                  ; 64 d
+equw U                  ; 65 e
+equw U                  ; 66 f
+equw U                  ; 67 g
+equw U                  ; 68 h
+equw U                  ; 69 i
+equw U                  ; 6a j
+equw U                  ; 6b k
+equw U                  ; 6c l
+equw U                  ; 6d m
+equw U                  ; 6e n
+equw U                  ; 6f o
+equw U                  ; 70 p
+equw U                  ; 71 q
+equw U                  ; 72 r
+equw U                  ; 73 s
+equw U                  ; 74 t
+equw U                  ; 75 u
+equw U                  ; 76 v
+equw U                  ; 77 w
+equw U                  ; 78 x
+equw U                  ; 79 y
+equw U                  ; 7a z
+equw U                  ; 7b {
+equw U                  ; 7c |
+equw U                  ; 7d }
+equw U                  ; 7e ~
+equw U                  ; 7f DEL
 
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
-print "kernel size: ", *-start
-;print "bytes left (after kernel): ", screenStart-*
+print "kernel size: &", STR$~(*-start)
 
 .here_start:
 print "here_start: &", STR$~(here_start)
@@ -795,7 +814,7 @@ print "here_start: &", STR$~(here_start)
     incbin "../quarter-forth/f/forth.f"
     equb 0
 
-print "embedded size: ", *-embedded
+print "embedded size: &", STR$~(*-embedded)
 
 .end:
 
