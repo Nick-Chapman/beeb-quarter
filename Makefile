@@ -11,7 +11,7 @@ ssds = $(patsubst %, _build/%.ssd, $(units))
 build-all: _build $(ssds)
 
 run-%: _build/%.ssd
-	b-em $<
+	b-em -sp9 $< # run emulator at 10x speed
 
 _build/%.ssd: src/%.asm Makefile $(wildcard $(quarter)/f/*)
 	@ echo Building $<

@@ -265,7 +265,7 @@ defword "crash"                         , d3:d4=*
 
 xdefword "startup-is-complete"           , d4:d5=*
 
-xdefword "crash-only-during-startup"     , d5:d6=*
+defword "crash-only-during-startup"     , d5:d6=*
 ._crash_startup:
     stop "crash_only_during_startup"
     rts
@@ -378,7 +378,10 @@ defword "-"                             , d22:d23=*
     inx : inx
     rts
 
-xdefword "*"                             , d23:d24=*
+defword "*"                             , d23:d24=*
+    stop "*"
+    rts
+
 defword "/mod"                          , d24:d25=*
     stop "/mod"
     rts
@@ -617,7 +620,7 @@ defword "xt->next"                      , d43:d44=*
 	sta PS+1, x
     rts
 
-xdefword "immediate?"                    , d44:d45=*
+defword "immediate?"                    , d44:d45=*
     ;; ( xt -- bool )
 ._immediate_query: {
     PsTopToTemp
@@ -657,7 +660,12 @@ defword "immediate^"                    , d46:d47=*
 
 defword "hidden^"                       , d47:d48=*
     ;; ( xt -- )
-    stop "hidden^"
+    PsTopToTemp
+    dec temp+1 ; back 256 bytes ; to allow negative acess
+    ldy #255 ; -1
+    lda (temp),y
+    eor #HiddenFlag
+    sta (temp),y
     rts
 
 defword "entry,"                        , d48:d49=*
