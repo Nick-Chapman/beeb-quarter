@@ -26,6 +26,27 @@ org &0
 ;guard screenStart
 org kernelStart
 
+.start:
+    jmp main
+
+;;; just for dev/debug
+.printHexA: { ;; clobbers A
+    sta mod1+1
+    sta mod2+1
+    txa : pha ; save X (killing A)
+    lda #',' : jsr osasci
+    .mod1 lda #&33 ; SMC
+    and #&f0 : lsr a : lsr a : lsr a : lsr a : tax
+    lda digits,x
+    jsr osasci
+    .mod2 lda #&44 ; SMC
+    and #&f : tax
+    lda digits,x
+    jsr osasci
+    pla : tax ; restore X (killing A)
+    rts
+.digits EQUS "0123456789abcdef" }
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Parameter Stack (PS)
 
@@ -123,9 +144,6 @@ macro stop message
 endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-.start:
-    jmp main
 
 .main: {
     ldx #0
@@ -315,7 +333,13 @@ defword "1"                             , d18:d19=*
     rts
 
 defword "xor"                           , d19:d20=*
-    stop "xor"
+    lda PS+2, x
+    eor PS+0, x
+    sta PS+2, x
+    lda PS+3, x
+    eor PS+1, x
+    sta PS+3, x
+    inx : inx
     rts
 
 xdefword "/2"                            , d20:d21=*
