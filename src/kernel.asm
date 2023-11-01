@@ -1,4 +1,4 @@
-mode = 1
+mode = 7
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -180,7 +180,11 @@ endmacro
 ._nop:
     rts
 
-.key_indirect: {
+.raw_key: {
+    jsr indirect
+    ;; pha : jsr writeChar : pla ;; echo
+    rts
+.indirect:
     jmp (indirection) ; TODO: prefer SMC
 .indirection:
     equw initial
@@ -202,7 +206,7 @@ d0 = 0
 
 ._set_dispatch_table:
     ;newline : puts "set_dispatch_table" : newline
-    jsr _key ; TODO use key_indirect, avoid popping from PS
+    jsr _key ; TODO use raw_key, avoid popping from PS
     popA ;lo
     asl a
     sta mod+1
@@ -672,9 +676,8 @@ xdefword "key"                           , d50:d51=*
 ._key:
     lda #0
     pushA ;hi
-    jsr key_indirect
+    jsr raw_key
     pushA ;lo
-    ;;jsr writeChar ; echo : TODO: move echo into key_indirect
     rts
 
 xdefword "set-key"                       , d51:d52=*
