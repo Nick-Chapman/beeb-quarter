@@ -305,7 +305,7 @@ defword "drop"                          , d13:d14=*
     inx : inx
     rts
 
-xdefword "over"                          , d14:d15=*
+defword "over"                          , d14:d15=*
 	;; ( x y -- x y x )
 ._over:
     dex : dex
@@ -315,8 +315,13 @@ xdefword "over"                          , d14:d15=*
     sta PS+1, x
     rts
 
-xdefword ">r"                            , d15:d16=*
-xdefword "r>"                            , d16:d17=*
+defword ">r"                            , d15:d16=*
+	stop ">r"
+    rts
+
+defword "r>"                            , d16:d17=*
+    stop "r>"
+    rts
 
 defword "0"                             , d17:d18=*
 	;; ( -- num )
@@ -374,7 +379,9 @@ defword "-"                             , d22:d23=*
     rts
 
 xdefword "*"                             , d23:d24=*
-xdefword "/mod"                          , d24:d25=*
+defword "/mod"                          , d24:d25=*
+    stop "/mod"
+    rts
 
 defword "<"                             , d25:d26=*
 	;; ( numP numQ -- bool )
@@ -455,7 +462,9 @@ defword "c@"                            , d29:d30=*
 	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
     rts
 
-xdefword "c!"                            , d30:d31=*
+defword "c!"                            , d30:d31=*
+    stop "c!"
+    rts
 
 defword "here-pointer"                  , d31:d32=*
     ;; ( -- a )
@@ -582,7 +591,7 @@ defword "compile,"                      , d41:d42=*
     commaHereBump
     rts
 
-xdefword "xt->name"                      , d42:d43=*
+defword "xt->name"                      , d42:d43=*
     ;; ( xt -- string )
 ._xt_name:
     PsTopToTemp
@@ -595,7 +604,7 @@ xdefword "xt->name"                      , d42:d43=*
 	sta PS+1, x
     rts
 
-xdefword "xt->next"                      , d43:d44=*
+defword "xt->next"                      , d43:d44=*
     ;; ( xt -- xt )
 ._xt_next:
     PsTopToTemp
@@ -626,12 +635,12 @@ xdefword "immediate?"                    , d44:d45=*
     rts
     }
 
-xdefword "hidden?"                       , d45:d46=*
+defword "hidden?"                       , d45:d46=*
     ;; ( xt -- bool )
 ._hidden_query:
     popA
     popA
-    lda #0 ;; TODO: support properly
+    lda #0 ;; TODO: support properly (look at the flag!)
     pushA
     pushA
     rts
@@ -646,7 +655,10 @@ defword "immediate^"                    , d46:d47=*
     sta (temp),y
     rts
 
-xdefword "hidden^"                       , d47:d48=*
+defword "hidden^"                       , d47:d48=*
+    ;; ( xt -- )
+    stop "hidden^"
+    rts
 
 defword "entry,"                        , d48:d49=*
 ._entry_comma: ;; ( string -- )
@@ -706,7 +718,11 @@ defword "cr"                            , d57:d58=*
 
 xdefword "cls"                           , d58:d59=*
 
-last = d59
+defword "key?"                          , d59:d60=*
+    stop "key?"
+    rts
+
+last = d60
 .latestVar equw last
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
