@@ -109,6 +109,17 @@ endmacro
 .start:
     jmp main
 
+.main: {
+    ldx #0
+    jsr cls
+    copy16i embedded, embeddedPtr
+    copy16i here_start, hereVar
+.loop:
+    jsr _key
+    jsr _dispatch
+    jsr _execute
+    jmp loop }
+
 .cls:
     lda #22 : jsr oswrch
     lda #mode : jsr oswrch
@@ -166,30 +177,78 @@ endmacro
     pla : tay
     rts }
 
-.main: {
-    ldx #0
-    jsr cls
-    copy16i embedded, embeddedPtr
-    copy16i here_start, hereVar
-.loop:
-    jsr _key
-    jsr _dispatch
-    jsr _execute
-    jmp loop }
-
 ._nop:
     rts
+
+.key_indirect: {
+    jmp (indirection) ; TODO: prefer SMC
+.indirection:
+    equw initial
+.initial:
+    ldy #0
+    lda (embeddedPtr),y
+    beq switch
+    incWord embeddedPtr
+	rts
+.switch:
+    copy16i interactive, indirection
+.interactive:
+    jmp osrdch
+    }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 d0 = 0
 
+._set_dispatch_table:
+    ;newline : puts "set_dispatch_table" : newline
+    jsr _key ; TODO use key_indirect, avoid popping from PS
+    popA ;lo
+    asl a
+    sta mod+1
+    popA ;hi
+
+    jsr _here_pointer
+    jsr _fetch ; clobbers Y ; TODO: inline, avoiding PS manip
+
+    .mod ldy #&33
+    popA ;lo
+    sta dispatch_table,y
+    popA ;hi
+    sta dispatch_table+1,y
+	rts
+
 xdefword "dispatch"                      , d0:d1=*
+._dispatch: {
+    popA ;lo
+    sta mod+1
+    asl a
+    tay
+    popA ;hi
+    lda dispatch_table+1,y
+    pushA ;hi
+    lda dispatch_table,y
+    pushA ;lo
+	ora PS+1, x
+    beq unset
+    rts
+.unset:
+    jsr _cr
+    .mod lda #0 : jsr oswrch
+    lda #'?' : jsr oswrch
+    jmp spin
+    }
+
 xdefword "reset"                         , d1:d2=*
 xdefword "bye"                           , d2:d3=*
 xdefword "crash"                         , d3:d4=*
 xdefword "startup-is-complete"           , d4:d5=*
+
 xdefword "crash-only-during-startup"     , d5:d6=*
+._crash_only_during_startup:
+    stop "crash_only_during_startup"
+    rts
+
 xdefword "sp"                            , d6:d7=*
 xdefword "sp0"                           , d7:d8=*
 xdefword "rsp"                           , d8:d9=*
@@ -207,11 +266,40 @@ defword "dup"                           , d11:d12=*
     rts
 
 xdefword "swap"                          , d12:d13=*
+._swap:
+    ldy PS+0, x
+    lda PS+2, x
+    sty PS+2, x
+    sta PS+0, x
+    ldy PS+1, x
+    lda PS+3, x
+    sty PS+3, x
+    sta PS+1, x
+    rts
+
 xdefword "drop"                          , d13:d14=*
+._drop:
+    inx : inx
+    rts
+
 xdefword "over"                          , d14:d15=*
+._over:
+    dex : dex
+    lda PS+4, x
+    sta PS+0, x
+    lda PS+5, x
+    sta PS+1, x
+    rts
+
 xdefword ">r"                            , d15:d16=*
 xdefword "r>"                            , d16:d17=*
+
 xdefword "0"                             , d17:d18=*
+._zero:
+    lda #0
+    pushA
+    pushA
+    rts
 
 defword "1"                             , d18:d19=*
 	;; ( -- num )
@@ -239,13 +327,133 @@ defword "+"                             , d21:d22=*
     rts
 
 xdefword "-"                             , d22:d23=*
+._minus: ;; PH PL - QH QL
+    ;newline : puts "minus(pre): "
+    ;lda PS+3,x : jsr printHexA
+    ;lda PS+2,x : jsr printHexA
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    sec
+    lda PS+2, x ; PL
+    sbc PS+0, x ; QL
+    sta PS+2, x
+    lda PS+3, x ; PH
+    sbc PS+1, x ; QH
+    sta PS+3, x
+    inx : inx
+    ;newline : puts "minus(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+    rts
+
 xdefword "*"                             , d23:d24=*
 xdefword "/mod"                          , d24:d25=*
+
 xdefword "<"                             , d25:d26=*
+._less_than: {  ;; PH PL < QH QL
+    ;newline : puts "less(pre): "
+    ;lda PS+3,x : jsr printHexA
+    ;lda PS+2,x : jsr printHexA
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;; compare high order bytes first
+    ;; cmp is like subtract. do: P - Q
+    ;; check carry flag
+    ;; if it (remains) set we didn't borrow
+    ;; if it gets cleared we borrowed (so Q>P)
+    ;newline : puts "test hi"
+    lda PS+3, x ; PH
+    cmp PS+1, x ; QH
+	bcc less
+    bne notLess
+    ;; drop here only if hi-bytes are equal
+    beq equal ; should not be needed
+    stop "impossible"
+.equal:
+    ;newline : puts "test lo"
+    lda PS+2, x ; PL
+    cmp PS+0, x ; QL
+    bcc less
+.notLess:
+    ;newline : puts "NOT-LESS"
+    lda #0 ; false
+    jmp store
+.less:
+    ;newline : puts "LESS"
+    lda #&ff ; true
+.store:
+    sta PS+2, x
+    sta PS+3, x
+    inx : inx
+    ;newline : puts "less(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+    rts
+    }
+
 xdefword "="                             , d26:d27=*
-xdefword "@"                             , d27:d28=*
+._equal: { ;; PH PL = QH QL
+    lda PS+2, x ; PL
+    cmp PS+0, x ; QL
+    bne diff
+    lda PS+3, x ; PH
+    cmp PS+1, x ; QH
+    bne diff
+.same:
+    lda #&ff ; true
+    jmp store
+.diff:
+    lda #0 ; false
+.store:
+    sta PS+2, x
+    sta PS+3, x
+    inx : inx
+    rts }
+
+defword "@"                             , d27:d28=*
+    ;; ( addr -- value )
+._fetch:
+    PsTopToTemp
+    ldy #0
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #1
+    lda (temp),y
+	sta PS+1, x ; hi-value
+    rts
+
 xdefword "!"                             , d28:d29=*
+._store: ; ( value addr -- )
+    popA ;lo-addr
+    sta temp
+    popA ;hi-addr
+    sta temp+1
+    popA ;lo-value
+    ldy #0
+    sta (temp),y
+    popA ;hi-value
+    ldy #1
+    sta (temp),y
+    rts
+
 xdefword "c@"                            , d29:d30=*
+._c_fetch:
+    ;newline : puts "c_fetch(pre): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    PsTopToTemp
+    ldy #0
+    lda (temp),y
+	sta PS+0, x ; lo-value
+	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
+    ;newline : puts "c_fetch(post): "
+    ;lda PS+1,x : jsr printHexA
+    ;lda PS+0,x : jsr printHexA
+    ;newline
+    rts
+
 xdefword "c!"                            , d30:d31=*
 
 defword "here-pointer"                  , d31:d32=*
@@ -257,18 +465,141 @@ defword "here-pointer"                  , d31:d32=*
     pushA
     rts
 
-xdefword ","                             , d32:d33=*
+defword ","                             , d32:d33=*
+    ;; ( x -- )
+._comma:
+    jsr _c_comma
+    commaHereBump ; the only extra thing
+    rts
+
 xdefword "c,"                            , d33:d34=*
-xdefword "lit"                           , d34:d35=*
+    ;; ( char -- )
+._c_comma:
+    popA
+    commaHereBump
+    popA
+    rts
+
+defword "lit"                           , d34:d35=*
+	;; ( -- x )
+._lit:
+    pla
+    sta temp
+    pla
+    sta temp+1
+
+    ldy #2
+    lda (temp),y
+    pushA ;hi
+    ldy #1
+    lda (temp),y
+    pushA ;lo
+
+    incWord temp
+    incWord temp
+
+    lda temp+1
+    pha
+    lda temp
+    pha
+    rts
+
 xdefword "execute"                       , d35:d36=*
-xdefword "jump"                          , d36:d37=*
+._execute: {
+    popA ;lo
+    sta mod+1
+    popA ;hi
+    sta mod+2
+    .mod jmp 0
+    }
+
+defword "jump"                          , d36:d37=*
+	;; ( xt -- )
+._jump:
+    pla
+    pla
+    jmp _execute
+
 xdefword "exit"                          , d37:d38=*
+._exit:
+    pla
+    pla
+    rts
+
 xdefword "0branch"                       , d38:d39=*
+._branch0: {
+    pla
+    sta temp
+    pla
+    sta temp+1
+    popA
+    inx : ora PS-1, x
+    bne untaken
+.taken:
+    ;newline : puts "taken"
+    ldy #1 : lda (temp),y
+	jmp bump
+.untaken:
+    ;newline : puts "untaken"
+    lda #2
+.bump:
+    ;pha : newline : puts "dist: " : pla : pha : jsr printHexA : newline : pla
+    clc
+    adc temp
+    sta temp
+    lda #0 ;; TODO: should be hi-byte of dest for long branches. Use SMC !
+    adc temp+1
+    sta temp+1
+    ;; TODO: avoid saving back into temp. just push directly to return-stack
+    lda temp+1
+    pha
+    lda temp
+    pha
+    rts
+    }
+
 xdefword "branch"                        , d39:d40=*
+
 xdefword "ret,"                          , d40:d41=*
-xdefword "compile,"                      , d41:d42=*
+._write_ret:
+    lda #rtsOpCode
+    commaHereBump
+    rts
+
+defword "compile,"                      , d41:d42=*
+    ;; ( xt -- )
+._compile_comma:
+    lda #jsrOpCode
+    commaHereBump
+    popA
+    commaHereBump
+    popA
+    commaHereBump
+    rts
+
 xdefword "xt->name"                      , d42:d43=*
+._xt_name:
+    PsTopToTemp
+    dec temp+1
+    ldy #251 ; -5
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #252 ; -4
+    lda (temp),y
+	sta PS+1, x ; hi-value
+    rts
+
 xdefword "xt->next"                      , d43:d44=*
+._xt_next:
+    PsTopToTemp
+    dec temp+1
+    ldy #253 ; -3
+    lda (temp),y
+	sta PS+0, x ; lo-value
+    ldy #254 ; -2
+    lda (temp),y
+	sta PS+1, x ; hi-value
+    rts
 
 xdefword "immediate?"                    , d44:d45=*
     ;; ( xt -- bool )
@@ -310,6 +641,23 @@ defword "immediate^"                    , d46:d47=*
 
 xdefword "hidden^"                       , d47:d48=*
 xdefword "entry,"                        , d48:d49=*
+._entry_comma: ;; ( name -- )
+    popA ;lo-name
+    commaHereBump
+    popA ;hi-name
+    commaHereBump
+    lda latestVar ;lo-prev
+    commaHereBump
+    lda latestVar+1 ;hi-prev
+    commaHereBump
+    lda #0 ; byte for immediate/hidden flags
+    commaHereBump
+    ;; Set latest to here (after it has been advanced over the entry)
+    lda hereVar
+    sta latestVar
+    lda hereVar+1
+    sta latestVar+1
+    rts
 
 defword "latest"                        , d49:d50=*
     ;; ( -- a )
@@ -321,6 +669,14 @@ defword "latest"                        , d49:d50=*
     rts
 
 xdefword "key"                           , d50:d51=*
+._key:
+    lda #0
+    pushA ;hi
+    jsr key_indirect
+    pushA ;lo
+    ;;jsr writeChar ; echo : TODO: move echo into key_indirect
+    rts
+
 xdefword "set-key"                       , d51:d52=*
 xdefword "get-key"                       , d52:d53=*
 xdefword "echo-enabled"                  , d53:d54=*
@@ -347,450 +703,6 @@ last = d59
 .latestVar equw last
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-._drop:
-    inx : inx
-    rts
-
-._zero:
-    lda #0
-    pushA
-    pushA
-    rts
-
-._over:
-    dex : dex
-    lda PS+4, x
-    sta PS+0, x
-    lda PS+5, x
-    sta PS+1, x
-    rts
-
-._swap:
-    ldy PS+0, x
-    lda PS+2, x
-    sty PS+2, x
-    sta PS+0, x
-    ldy PS+1, x
-    lda PS+3, x
-    sty PS+3, x
-    sta PS+1, x
-    rts
-
-._minus: ;; PH PL - QH QL
-
-    ;newline : puts "minus(pre): "
-    ;lda PS+3,x : jsr printHexA
-    ;lda PS+2,x : jsr printHexA
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    sec
-    lda PS+2, x ; PL
-    sbc PS+0, x ; QL
-    sta PS+2, x
-    lda PS+3, x ; PH
-    sbc PS+1, x ; QH
-    sta PS+3, x
-    inx : inx
-
-    ;newline : puts "minus(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-
-    rts
-
-._less_than: {  ;; PH PL < QH QL
-
-    ;newline : puts "less(pre): "
-    ;lda PS+3,x : jsr printHexA
-    ;lda PS+2,x : jsr printHexA
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    ;; compare high order bytes first
-    ;; cmp is like subtract. do: P - Q
-    ;; check carry flag
-    ;; if it (remains) set we didn't borrow
-    ;; if it gets cleared we borrowed (so Q>P)
-
-    ;newline : puts "test hi"
-    lda PS+3, x ; PH
-    cmp PS+1, x ; QH
-	bcc less
-    bne notLess
-    ;; drop here only if hi-bytes are equal
-
-    beq equal ; should not be needed
-    stop "impossible"
-.equal:
-    ;newline : puts "test lo"
-
-    lda PS+2, x ; PL
-    cmp PS+0, x ; QL
-    bcc less
-
-.notLess:
-    ;newline : puts "NOT-LESS"
-    lda #0 ; false
-    jmp store
-
-.less:
-    ;newline : puts "LESS"
-    lda #&ff ; true
-.store:
-    sta PS+2, x
-    sta PS+3, x
-    inx : inx
-
-    ;newline : puts "less(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-
-    rts
-    }
-
-._equal: { ;; PH PL = QH QL
-    lda PS+2, x ; PL
-    cmp PS+0, x ; QL
-    bne diff
-    lda PS+3, x ; PH
-    cmp PS+1, x ; QH
-    bne diff
-.same:
-    lda #&ff ; true
-    jmp store
-.diff:
-    lda #0 ; false
-.store:
-    sta PS+2, x
-    sta PS+3, x
-    inx : inx
-    rts }
-
-._fetch: ; ( addr -- value )
-
-    ;newline : puts "fetch(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    PsTopToTemp
-    ldy #0
-    lda (temp),y
-	sta PS+0, x ; lo-value
-    ldy #1
-    lda (temp),y
-	sta PS+1, x ; hi-value
-
-    ;newline : puts "fetch(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-
-    rts
-
-._c_fetch:
-
-    ;newline : puts "c_fetch(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    PsTopToTemp
-    ldy #0
-    lda (temp),y
-	sta PS+0, x ; lo-value
-	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
-
-    ;newline : puts "c_fetch(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-    ;newline
-
-    rts
-
-._store: ; ( value addr -- )
-    popA ;lo-addr
-    sta temp
-    popA ;hi-addr
-    sta temp+1
-    popA ;lo-value
-    ldy #0
-    sta (temp),y
-    popA ;hi-value
-    ldy #1
-    sta (temp),y
-    rts
-
-._key:
-    lda #0
-    pushA ;hi
-    jsr key_indirect
-    pushA ;lo
-    ;;jsr writeChar ; echo : TODO: move echo into key_indirect
-    rts
-
-;;;print "_key: &", STR$~(_key)
-
-.key_indirect: {
-    jmp (indirection) ; TODO: prefer SMC
-.indirection:
-    equw initial
-.initial:
-    ldy #0
-    lda (embeddedPtr),y
-    beq switch
-    incWord embeddedPtr
-	rts
-.switch:
-    copy16i interactive, indirection
-.interactive:
-    jmp osrdch
-    }
-
-._exit:
-    pla
-    pla
-    rts
-
-;;;print "_exit: &", STR$~(_exit)
-
-._jump:
-    pla
-    pla
-    jmp _execute
-
-._execute: {
-    popA ;lo
-    sta mod+1
-    popA ;hi
-    sta mod+2
-    .mod jmp 0
-    }
-
-._write_ret:
-    lda #rtsOpCode
-    commaHereBump
-    rts
-
-._compile_comma:
-    lda #jsrOpCode
-    commaHereBump
-    popA ;lo
-    commaHereBump
-    popA ;hi
-    commaHereBump
-    rts
-
-._comma:
-    jsr _c_comma
-    commaHereBump ; the only extra thing
-    rts
-
-._c_comma:
-    popA ;lo
-    commaHereBump
-    popA ;hi
-    rts
-
-._lit:
-    pla
-    sta temp
-    pla
-    sta temp+1
-
-    ldy #2
-    lda (temp),y
-    pushA ;hi
-    ldy #1
-    lda (temp),y
-    pushA ;lo
-
-    incWord temp
-    incWord temp
-
-    lda temp+1
-    pha
-    lda temp
-    pha
-    rts
-
-;;;print "_lit: &", STR$~(_lit)
-
-._branch0: {
-    pla
-    sta temp
-    pla
-    sta temp+1
-
-    popA
-    inx : ora PS-1, x
-    bne untaken
-
-.taken:
-    ;newline : puts "taken"
-    ldy #1 : lda (temp),y
-	jmp bump
-.untaken:
-    ;newline : puts "untaken"
-    lda #2
-
-.bump:
-    ;pha : newline : puts "dist: " : pla : pha : jsr printHexA : newline : pla
-
-    clc
-    adc temp
-    sta temp
-    lda #0 ;; TODO: should be hi-byte of dest for long branches. Use SMC !
-    adc temp+1
-    sta temp+1
-    ;; TODO: avoid saving back into temp. just push directly to return-stack
-    lda temp+1
-    pha
-    lda temp
-    pha
-    rts
-    }
-
-._set_dispatch_table:
-    ;newline : puts "set_dispatch_table" : newline
-    jsr _key ; TODO use key_indirect, avoid popping from PS
-    popA ;lo
-    asl a
-    sta mod+1
-    popA ;hi
-
-    jsr _here_pointer
-    jsr _fetch ; clobbers Y ; TODO: inline, avoiding PS manip
-
-    .mod ldy #&33
-    popA ;lo
-    sta dispatch_table,y
-    popA ;hi
-    sta dispatch_table+1,y
-	rts
-
-._dispatch: {
-    popA ;lo
-    sta mod+1
-    asl a
-    tay
-    popA ;hi
-    lda dispatch_table+1,y
-    pushA ;hi
-    lda dispatch_table,y
-    pushA ;lo
-	ora PS+1, x
-    beq unset
-    rts
-.unset:
-    jsr _cr
-    .mod lda #0 : jsr oswrch
-    lda #'?' : jsr oswrch
-    jmp spin
-    }
-
-
-._entry_comma: ;; ( name -- )
-    popA ;lo-name
-    commaHereBump
-    popA ;hi-name
-    commaHereBump
-    lda latestVar ;lo-prev
-    commaHereBump
-    lda latestVar+1 ;hi-prev
-    commaHereBump
-    lda #0 ; byte for immediate/hidden flags
-    commaHereBump
-    ;; Set latest to here (after it has been advanced over the entry)
-    lda hereVar
-    sta latestVar
-    lda hereVar+1
-    sta latestVar+1
-    rts
-
-._xt_next:
-    ;newline : puts "xt_next(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    PsTopToTemp
-    dec temp+1 ; back 256 bytes ; to allow negative acess
-    ldy #253 ; -3
-    lda (temp),y
-	sta PS+0, x ; lo-value
-    ldy #254 ; -2
-    lda (temp),y
-	sta PS+1, x ; hi-value
-
-    ;newline : puts "xt_next(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    rts
-
-._xt_name:
-    ;newline : puts "xt_name(pre): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    PsTopToTemp
-
-    ;newline : puts "temp: "
-    ;lda temp+1 : jsr printHexA
-    ;lda temp : jsr printHexA
-
-    ;; backup temp some bytes to allow peeking
-    ;; sec
-    ;; lda temp
-    ;; sbc #8
-    ;; sta temp
-    ;; lda temp+1
-    ;; sbc #0
-    ;; sta temp+1
-
-    ;; newline : puts "*temp: "
-    ;; ldy #0 : lda (temp),y : jsr printHexA
-    ;; ldy #1 : lda (temp),y : jsr printHexA
-    ;; ldy #2 : lda (temp),y : jsr printHexA
-    ;; ldy #3 : lda (temp),y : jsr printHexA
-    ;; ldy #4 : lda (temp),y : jsr printHexA
-    ;; ldy #5 : lda (temp),y : jsr printHexA
-    ;; ldy #6 : lda (temp),y : jsr printHexA
-    ;; ldy #7 : lda (temp),y : jsr printHexA
-    ;; ldy #8 : lda (temp),y : jsr printHexA
-
-    ;;dec temp+1 ; back 256 bytes
-    ;; to allow negative acess
-    ;; newline : puts "*temp: "
-    ;; ldy #248 : lda (temp),y : jsr printHexA
-    ;; ldy #249 : lda (temp),y : jsr printHexA
-    ;; ldy #250 : lda (temp),y : jsr printHexA ; null
-    ;; ldy #251 : lda (temp),y : jsr printHexA
-    ;; ldy #252 : lda (temp),y : jsr printHexA
-    ;; ldy #253 : lda (temp),y : jsr printHexA
-    ;; ldy #254 : lda (temp),y : jsr printHexA
-    ;; ldy #255 : lda (temp),y : jsr printHexA
-
-    dec temp+1 ; back 256 bytes ; to allow negative acess
-    ldy #251 ; -5
-    lda (temp),y
-	sta PS+0, x ; lo-value
-    ldy #252 ; -4
-    lda (temp),y
-	sta PS+1, x ; hi-value
-
-    ;newline : puts "xt_name(post): "
-    ;lda PS+1,x : jsr printHexA
-    ;lda PS+0,x : jsr printHexA
-
-    rts
-
-
-._crash_only_during_startup:
-    stop "crash_only_during_startup"
-    rts
 
 print "kernel size (sans dispatch table): ", *-start
 
