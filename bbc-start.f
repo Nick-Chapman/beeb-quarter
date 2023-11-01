@@ -12,3 +12,5 @@ startup-is-complete
 hide startup-is-complete
 hide crash-only-during-startup
 echo-on
+
+words

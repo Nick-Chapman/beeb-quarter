@@ -329,11 +329,25 @@ defword "over"                          , d14:d15=*
     rts
 
 defword ">r"                            , d15:d16=*
-	stop ">r"
+    ;; ( x -- )
+    PopRsTemp
+    lda PS+1, x
+    pha
+    lda PS+0, x
+    pha
+    inx : inx
+    PushRsTemp
     rts
 
 defword "r>"                            , d16:d17=*
-    stop "r>"
+    ;; ( -- x )
+    PopRsTemp
+    dex : dex
+    pla
+    sta PS+0, x
+    pla
+    sta PS+1, x
+    PushRsTemp
     rts
 
 defword "0"                             , d17:d18=*
