@@ -135,18 +135,18 @@ PS = &90
 
 macro pushA
     dex
-	sta PS, x
+    sta PS, x
 endmacro
 
 macro popA
-	lda PS, x
+    lda PS, x
     inx
 endmacro
 
 macro PsTopToTemp
     lda PS+0, x
     sta temp
-	lda PS+1, x
+    lda PS+1, x
     sta temp+1
 endmacro
 
@@ -191,7 +191,7 @@ macro commaHere ; takes value in A; Y needs to be set to offset
 endmacro
 
 macro commaHereBump ; takes value in A
-	ldy #0
+    ldy #0
     commaHere
     incWord hereVar
 endmacro
@@ -269,7 +269,7 @@ endmacro
     lda (embeddedPtr),y
     beq switch
     incWord embeddedPtr
-	rts
+    rts
 .switch:
     copy16i interactive, indirection
 .interactive:
@@ -301,7 +301,7 @@ d0 = 0
     sta dispatch_table,y
     lda hereVar+1
     sta dispatch_table+1,y
-	rts
+    rts
 
 xdefword "dispatch"                      , d0:d1=*
 ._dispatch: {
@@ -314,7 +314,7 @@ xdefword "dispatch"                      , d0:d1=*
     pushA
     lda dispatch_table,y
     pushA
-	ora PS+1, x
+    ora PS+1, x
     beq unset
     rts
 .unset:
@@ -332,7 +332,7 @@ defword "crash"                         , d3:d4=*
     rts
 
 defword "startup-is-complete"           , d4:d5=*
-	lda #1
+    lda #1
     sta is_startup_complete
     rts
 
@@ -348,14 +348,36 @@ defword "crash-only-during-startup"     , d5:d6=*
     rts
     }
 
-xdefword "sp"                            , d6:d7=*
-xdefword "sp0"                           , d7:d8=*
-xdefword "rsp"                           , d8:d9=*
-xdefword "rsp0"                          , d9:d10=*
-xdefword "as-num"                        , d10:d11=*
+defword "sp"                            , d6:d7=*
+    txa
+    clc : adc #PS
+    dex : dex
+    sta PS+0, x
+    lda #0
+    sta PS+1, x
+    rts
+
+defword "sp0"                           , d7:d8=*
+    lda #0
+    pushA
+    lda #PS
+    pushA
+    rts
+
+defword "rsp"                           , d8:d9=*
+    stop "rsp"
+    rts
+
+defword "rsp0"                          , d9:d10=*
+    stop "rsp0"
+    rts
+
+defword "as-num"                        , d10:d11=*
+    stop "as-num"
+    rts
 
 defword "dup"                           , d11:d12=*
-	;; ( x -- x x )
+    ;; ( x -- x x )
 ._dup:
     dex : dex
     lda PS+2, x
@@ -365,7 +387,7 @@ defword "dup"                           , d11:d12=*
     rts
 
 defword "swap"                          , d12:d13=*
-	;; ( x y -- y x )
+    ;; ( x y -- y x )
 ._swap:
     ldy PS+0, x
     lda PS+2, x
@@ -378,13 +400,13 @@ defword "swap"                          , d12:d13=*
     rts
 
 defword "drop"                          , d13:d14=*
-	;; ( x -- )
+    ;; ( x -- )
 ._drop:
     inx : inx
     rts
 
 defword "over"                          , d14:d15=*
-	;; ( x y -- x y x )
+    ;; ( x y -- x y x )
 ._over:
     dex : dex
     lda PS+4, x
@@ -416,7 +438,7 @@ defword "r>"                            , d16:d17=*
     rts
 
 defword "0"                             , d17:d18=*
-	;; ( -- num )
+    ;; ( -- num )
 ._zero:
     lda #0
     pushA
@@ -424,7 +446,7 @@ defword "0"                             , d17:d18=*
     rts
 
 defword "1"                             , d18:d19=*
-	;; ( -- num )
+    ;; ( -- num )
 ._one:
     lda #0
     pushA
@@ -443,7 +465,7 @@ defword "xor"                           , d19:d20=*
     rts
 
 defword "/2"                            , d20:d21=*
-	;; ( num -- num )
+    ;; ( num -- num )
     ;; TODO: direct implementation using asr/ror
     lda #0
     pushA
@@ -455,7 +477,7 @@ defword "/2"                            , d20:d21=*
     rts
 
 defword "+"                             , d21:d22=*
-	;; ( numP numQ -- num )
+    ;; ( numP numQ -- num )
 ._plus:
     clc
     lda PS+2, x ; PL
@@ -468,7 +490,7 @@ defword "+"                             , d21:d22=*
     rts
 
 defword "-"                             , d22:d23=*
-	;; ( numP numQ -- num )
+    ;; ( numP numQ -- num )
 ._minus:
     sec
     lda PS+2, x ; PL
@@ -536,7 +558,7 @@ defword "/mod"                          , d24:d25=*
 
 ;; signed comparison
 defword "<"                             , d25:d26=*
-	;; ( numP numQ -- bool )
+    ;; ( numP numQ -- bool )
 ._less_than: {
     ;; unsigned 16bit comparison by subtraction like example 4.3 of compare-beyond
     lda PS+2, x ; PL
@@ -562,7 +584,7 @@ defword "<"                             , d25:d26=*
     }
 
 defword "="                             , d26:d27=*
-	;; ( numP numQ -- bool )
+    ;; ( numP numQ -- bool )
 ._equal: {
     lda PS+2, x ; PL
     cmp PS+0, x ; QL
@@ -587,10 +609,10 @@ defword "@"                             , d27:d28=*
     PsTopToTemp
     ldy #0
     lda (temp),y
-	sta PS+0, x ; lo-value
+    sta PS+0, x ; lo-value
     ldy #1
     lda (temp),y
-	sta PS+1, x ; hi-value
+    sta PS+1, x ; hi-value
     rts
 
 defword "!"                             , d28:d29=*
@@ -610,15 +632,17 @@ defword "!"                             , d28:d29=*
     rts
 
 defword "c@"                            , d29:d30=*
+    ;; ( addr -- char )
 ._c_fetch:
     PsTopToTemp
     ldy #0
     lda (temp),y
-	sta PS+0, x ; lo-value
-	sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
+    sta PS+0, x ; lo-value
+    sty PS+1, x ; hi-value (Y conveniently contains 0) -- This store is the only diff from fetch
     rts
 
 defword "c!"                            , d30:d31=*
+    ;; ( char addr -- )
     stop "c!"
     rts
 
@@ -645,11 +669,11 @@ defword "c,"                            , d33:d34=*
 ._c_comma:
     popA
     commaHereBump
-	inx
+    inx
     rts
 
 defword "lit"                           , d34:d35=*
-	;; ( -- x )
+    ;; ( -- x )
 ._lit:
     PopRsTemp
     ldy #2
@@ -664,7 +688,7 @@ defword "lit"                           , d34:d35=*
     rts
 
 defword "execute"                       , d35:d36=*
-	;; ( xt -- )
+    ;; ( xt -- )
 ._execute: {
     popA
     sta mod+1
@@ -674,7 +698,7 @@ defword "execute"                       , d35:d36=*
     }
 
 defword "jump"                          , d36:d37=*
-	;; ( xt -- )
+    ;; ( xt -- )
 ._jump:
     pla
     pla
@@ -696,7 +720,7 @@ defword "0branch"                       , d38:d39=*
 .taken:
     ldy #2 : lda (temp),y : sta mod+1
     ldy #1 : lda (temp),y
-	jmp bump
+    jmp bump
 .untaken:
     lda #0 : sta mod+1
     lda #2
@@ -708,7 +732,7 @@ defword "0branch"                       , d38:d39=*
     adc temp+1
     sta temp+1
     ;; TODO: avoid saving back into temp. just push directly to return-stack
-	PushRsTemp
+    PushRsTemp
     rts
     }
 
@@ -725,7 +749,7 @@ defword "branch"                        , d39:d40=*
     adc temp+1
     sta temp+1
     ;; TODO: avoid saving back into temp. just push directly to return-stack
-	PushRsTemp
+    PushRsTemp
     rts
     }
 
@@ -754,10 +778,10 @@ defword "xt->name"                      , d42:d43=*
     dec temp+1
     ldy #251 ; -5
     lda (temp),y
-	sta PS+0, x
+    sta PS+0, x
     ldy #252 ; -4
     lda (temp),y
-	sta PS+1, x
+    sta PS+1, x
     rts
 
 defword "xt->next"                      , d43:d44=*
@@ -767,10 +791,10 @@ defword "xt->next"                      , d43:d44=*
     dec temp+1
     ldy #253 ; -3
     lda (temp),y
-	sta PS+0, x
+    sta PS+0, x
     ldy #254 ; -2
     lda (temp),y
-	sta PS+1, x
+    sta PS+1, x
     rts
 
 defword "immediate?"                    , d44:d45=*
@@ -816,6 +840,7 @@ defword "immediate^"                    , d46:d47=*
     lda (temp),y
     eor #ImmediateFlag
     sta (temp),y
+    inx : inx ; TODO: was missing. bug!
     rts
 
 defword "hidden^"                       , d47:d48=*
@@ -826,6 +851,7 @@ defword "hidden^"                       , d47:d48=*
     lda (temp),y
     eor #HiddenFlag
     sta (temp),y
+    inx : inx  ; TODO: was missing. bug!
     rts
 
 defword "entry,"                        , d48:d49=*
@@ -863,21 +889,31 @@ defword "key"                           , d50:d51=*
     pushA
     jsr readChar
     pushA
+    ;;cmp #';'
+    ;;{ bne no : txa : jsr printHexA : .no }
     rts
 
 xdefword "set-key"                       , d51:d52=*
-xdefword "get-key"                       , d52:d53=*
+
+defword "get-key"                       , d52:d53=*
+    ;; TODO: is this right?
+    lda _key+1
+    pushA
+    lda _key
+    pushA
+    rts
+
 xdefword "echo-enabled"                  , d53:d54=*
 
 defword "echo-off"                      , d54:d55=*
     ;; ( -- )
-	lda #0
+    lda #0
     sta echo_enabled
     rts
 
 defword "echo-on"                       , d55:d56=*
     ;; ( -- )
-	lda #1
+    lda #1
     sta echo_enabled
     rts
 
@@ -907,12 +943,12 @@ defword "key?"                          , d59:d60=*
 
 ;;; make "fx" call to MOS, using "osbyte", passing arguments in A/X/Y
 defword "fx"                            , d60:d61=*
-	;; ( a x y -- )
+    ;; ( a x y -- )
     {
-	ldy PS+0, x ; Y
-	lda PS+2, x ; X
+    ldy PS+0, x ; Y
+    lda PS+2, x ; X
     sta SMC_newX +1
-	lda PS+4, x ; A
+    lda PS+4, x ; A
     inx : inx : inx : inx : inx : inx
     stx SMC_oldX +1
     .SMC_newX ldx #&44
@@ -1071,9 +1107,9 @@ print "here_start: &", STR$~(here_start)
 .embedded:
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
-    ;;incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
-    incbin "../quarter-forth/f/regression.f" ;; TODO: bug from final hides
-    incbin "../quarter-forth/f/examples.f" ;; TODO make fib work! words-since list is borked
+    incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502 ; dump crashes
+    incbin "../quarter-forth/f/regression.f"
+    incbin "../quarter-forth/f/examples.f"
     ;;incbin "../quarter-forth/f/primes.f" ;; TODO try
     ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this!
     incbin "f/bbc.f"

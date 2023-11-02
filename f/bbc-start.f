@@ -6,9 +6,8 @@ cr
 .." Welcome to Quarter Forth on the BBC." cr
 cr
 
-( Need tools for these... )
-( mem cr )
-( .?stack )
+( mem cr ) ( Number makes no sense for BBC. )
+.?stack
 
 caps-off
 disable-auto-repeat ( so we type even at 10x emulation speed )
