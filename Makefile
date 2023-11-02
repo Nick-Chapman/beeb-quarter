@@ -13,7 +13,7 @@ build-all: _build $(ssds)
 run-%: _build/%.ssd
 	b-em -sp9 $< # run emulator at 10x speed
 
-_build/%.ssd: src/%.asm Makefile $(wildcard $(quarter)/f/*) $(wildcard *.f)
+_build/%.ssd: src/%.asm Makefile $(wildcard $(quarter)/f/*) $(wildcard f/*.f)
 	@ echo Building $<
 	@ beebasm -w -i $< -do $@ -boot Code || rm $@
 

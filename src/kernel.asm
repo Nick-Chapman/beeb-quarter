@@ -208,7 +208,7 @@ macro newline ;; no clobber A
     pha : jsr osnewl : pla
 endmacro
 
-macro stop message
+macro stop message ;; TODO: rename todo
     jsr osnewl
     puts "stop:"
     puts message : newline
@@ -442,7 +442,17 @@ defword "xor"                           , d19:d20=*
     inx : inx
     rts
 
-xdefword "/2"                            , d20:d21=* ;; TODO: needed for examples
+defword "/2"                            , d20:d21=*
+	;; ( num -- num )
+    ;; TODO: direct implementation using asr/ror
+    lda #0
+    pushA
+    lda #2
+    pushA
+    jsr _div_mod
+    jsr _swap
+    jsr _drop
+    rts
 
 defword "+"                             , d21:d22=*
 	;; ( numP numQ -- num )
@@ -501,6 +511,7 @@ defword "*"                             , d23:d24=*
     rts
 
 defword "/mod"                          , d24:d25=*
+._div_mod:
     ;; ( p q -- p%q p/q )
     lda PS+3, x
     sta num1+1
@@ -1058,7 +1069,7 @@ print "here_start: &", STR$~(here_start)
     incbin "../quarter-forth/f/forth.f"
     ;;incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
     ;;incbin "../quarter-forth/f/regression.f" ;; TODO. (needs "x" needed defined by tools)
-    ;;incbin "../quarter-forth/f/examples.f" ;; TODO also needs "x". make fib work!
+    incbin "../quarter-forth/f/examples.f" ;; TODO also needs "x". make fib work!
     ;;incbin "../quarter-forth/f/primes.f" ;; TODO try
     ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this!
     incbin "f/bbc.f"
