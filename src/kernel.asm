@@ -217,12 +217,8 @@ endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; TODO: flip initial BBC caps lock state to be unset
-
 .main: {
     ldx #0
-    jsr cls
-    jsr disable_auto_repeat
     copy16i embedded, embeddedPtr
     copy16i here_start, hereVar
 .loop:
@@ -230,16 +226,6 @@ endmacro
     jsr _dispatch
     jsr _execute
     jmp loop }
-
-.cls:
-    lda #22 : jsr oswrch
-    lda #Mode : jsr oswrch
-    rts
-
-.disable_auto_repeat: ; clobbers X
-    lda #11
-    ldx #0
-    jmp osbyte
 
 .spin:
     jmp spin
@@ -887,7 +873,12 @@ defword "cr"                            , d57:d58=*
     ;; ( -- )
     jmp osnewl
 
-xdefword "cls"                           , d58:d59=*
+defword "cls"                           , d58:d59=*
+._cls:
+    lda #22 : jsr oswrch
+    lda #Mode : jsr oswrch
+    rts
+
 
 defword "key?"                          , d59:d60=*
     stop "key?"
