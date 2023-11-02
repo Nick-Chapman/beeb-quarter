@@ -7,6 +7,9 @@ cr
 ( mem cr )
 ( .?stack )
 
+caps-off
+disable-cursor-edit
+
 startup-is-complete
 
 hide startup-is-complete

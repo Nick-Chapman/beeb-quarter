@@ -893,7 +893,23 @@ defword "key?"                          , d59:d60=*
     stop "key?"
     rts
 
-last = d60
+;;; make "fx" call to MOS, using "osbyte", passing arguments in A/X/Y
+defword "fx"                            , d60:d61=*
+	;; ( a x y -- )
+    {
+	ldy PS+0, x ; Y
+	lda PS+2, x ; X
+    sta SMC_newX +1
+	lda PS+4, x ; A
+    inx : inx : inx : inx : inx : inx
+    stx SMC_oldX +1
+    .SMC_newX ldx #&44
+    jsr osbyte
+    .SMC_oldX ldx #&55
+    rts
+    }
+
+last = d61
 .latestVar equw last
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1048,7 +1064,8 @@ print "here_start: &", STR$~(here_start)
     ;;incbin "../quarter-forth/f/examples.f" ;; TODO also needs "x". make fib work!
     ;;incbin "../quarter-forth/f/primes.f" ;; TODO try
     ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this!
-    incbin "bbc-start.f"
+    incbin "f/bbc.f"
+    incbin "f/bbc-start.f"
     equb 0
 
 print "embedded size: &", STR$~(*-embedded)
