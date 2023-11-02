@@ -15,13 +15,20 @@ oswrch = &ffee
 kernelStart = &1900 ;; 1100 NO, 1200 OK
 screenStart = &3000
 
-guard &10
+guard &12
 org &0
 
 .hereVar skip 2
 .temp skip 2 ; used by _lit & elsewhere
 .embeddedPtr skip 2
 .msgPtr skip 2
+
+;;for multiply and divide
+.num1 skip 2
+.num2 skip 2
+.result skip 4
+.remainder skip 2
+
 ;guard screenStart
 org kernelStart
 
@@ -30,6 +37,65 @@ org kernelStart
 
 .echo_enabled equb Echo ; controls echo in readChar
 .is_startup_complete equb 0 ; controls crash-only-during-startup
+
+.multiply: ; num1*num2 -> result
+    {
+    ;; A holds result+3.
+    ;; At each step, num2 is shifted right.
+    ;; If the least sig bit is set, we add num1 into result+2/3.
+    ;; Then result is shifted rightwards (so subsequent add-in are in effect doubled)
+    lda #0 ; result+3
+    sta result+2
+    ldx #16
+.loop:
+    lsr num2+1
+    ror num2
+    bcc shift
+    tay
+    clc
+    lda result+2
+    adc num1
+    sta result+2
+    tya ; result+3
+    adc num1+1
+.shift:
+    ror a
+    ror result+2
+    ror result+1
+    ror result
+    dex
+    bne loop
+    sta result+3
+    rts
+    }
+
+.divide:  ; num1/num2 -> result(in num1) and remainder
+    {
+    lda #0
+    sta remainder
+    sta remainder+1
+    ldx #16
+.loop:
+    asl num1
+    rol num1+1
+    rol remainder
+    rol remainder+1
+    lda remainder
+    sec
+    sbc num2
+    tay
+    lda remainder+1
+    sbc num2+1
+    bcc noInc
+    sta remainder+1
+    sty remainder
+    inc num1
+.noInc:
+    dex
+    bne loop
+    rts
+    }
+
 
 ;;; just for dev/debug
 .printHexA: { ;; clobbers A
@@ -406,11 +472,55 @@ defword "-"                             , d22:d23=*
     rts
 
 defword "*"                             , d23:d24=*
-    stop "*"
+    jsr _umx
+    jsr _swap
+    jsr _drop
+    rts
+
+._umx:
+    ;; ( p q -- p*q[hi] p*q[lo] )
+    lda PS+3, x
+    sta num1+1
+    lda PS+2, x
+    sta num1
+    lda PS+1, x
+    sta num2+1
+    lda PS+0, x
+    sta num2
+    txa : pha
+    jsr multiply
+    pla : tax
+    lda result+3
+    sta PS+3, x
+    lda result+2
+    sta PS+2, x
+    lda result+1
+    sta PS+1, x
+    lda result+0
+    sta PS+0, x
     rts
 
 defword "/mod"                          , d24:d25=*
-    stop "/mod"
+    ;; ( p q -- p%q p/q )
+    lda PS+3, x
+    sta num1+1
+    lda PS+2, x
+    sta num1
+    lda PS+1, x
+    sta num2+1
+    lda PS+0, x
+    sta num2
+    txa : pha
+    jsr divide
+    pla : tax
+    lda remainder+1
+    sta PS+3, x
+    lda remainder
+    sta PS+2, x
+    lda num1+1
+    sta PS+1, x
+    lda num1
+    sta PS+0, x
     rts
 
 defword "<"                             , d25:d26=*
