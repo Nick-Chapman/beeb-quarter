@@ -854,8 +854,14 @@ xdefword "set-key"                       , d51:d52=*
 xdefword "get-key"                       , d52:d53=*
 xdefword "echo-enabled"                  , d53:d54=*
 
-xdefword "echo-off"                      , d54:d55=*
+defword "echo-off"                      , d54:d55=*
+    ;; ( -- )
+	lda #0
+    sta echo_enabled
+    rts
+
 defword "echo-on"                       , d55:d56=*
+    ;; ( -- )
 	lda #1
     sta echo_enabled
     rts

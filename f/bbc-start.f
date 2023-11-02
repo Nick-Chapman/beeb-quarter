@@ -1,4 +1,5 @@
 
+echo-off
 cls
 
 cr
