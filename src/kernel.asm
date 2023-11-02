@@ -534,22 +534,26 @@ defword "/mod"                          , d24:d25=*
     sta PS+0, x
     rts
 
+;; signed comparison
 defword "<"                             , d25:d26=*
 	;; ( numP numQ -- bool )
 ._less_than: {
-    ;; TODO: fix for signed behaviour, as required by regression.f
-    lda PS+3, x ; PH
-    cmp PS+1, x ; QH
-	bcc less
-    bne notLess
+    ;; unsigned 16bit comparison by subtraction like example 4.3 of compare-beyond
     lda PS+2, x ; PL
     cmp PS+0, x ; QL
-    bcc less
-.notLess:
-    lda #0 ; false
-    jmp store
+    lda PS+3, x ; PH
+    sbc PS+1, x ; QH
+
+    ;; sign hack (like example 6.1)
+    bvc noInvert : eor #$80 : .noInvert
+    bpl notLess
+    ;;bcs notLess ; unsigned
+
 .less:
     lda #&ff ; true
+    jmp store
+.notLess:
+    lda #0 ; false
 .store:
     sta PS+2, x
     sta PS+3, x
@@ -1068,8 +1072,8 @@ print "here_start: &", STR$~(here_start)
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
     ;;incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
-    ;;incbin "../quarter-forth/f/regression.f" ;; TODO. (needs "x" needed defined by tools)
-    incbin "../quarter-forth/f/examples.f" ;; TODO also needs "x". make fib work!
+    incbin "../quarter-forth/f/regression.f" ;; TODO: bug from final hides
+    incbin "../quarter-forth/f/examples.f" ;; TODO make fib work! words-since list is borked
     ;;incbin "../quarter-forth/f/primes.f" ;; TODO try
     ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this!
     incbin "f/bbc.f"

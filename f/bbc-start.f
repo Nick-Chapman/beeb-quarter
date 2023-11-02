@@ -1,6 +1,6 @@
 
 echo-off
-cls
+( cls )
 
 cr
 .." Welcome to Quarter Forth on the BBC." cr
