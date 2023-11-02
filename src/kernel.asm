@@ -11,6 +11,7 @@ osrdch = &ffe0
 osasci = &ffe3
 osnewl = &ffe7
 oswrch = &ffee
+osbyte = &fff4
 
 kernelStart = &1900 ;; 1100 NO, 1200 OK
 screenStart = &3000
@@ -216,12 +217,12 @@ endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;;; TODO: switch off auto repeat at startup, so can type when b-em is at 10x speed
 ;;; TODO: flip initial BBC caps lock state to be unset
 
 .main: {
     ldx #0
     jsr cls
+    jsr disable_auto_repeat
     copy16i embedded, embeddedPtr
     copy16i here_start, hereVar
 .loop:
@@ -234,6 +235,11 @@ endmacro
     lda #22 : jsr oswrch
     lda #Mode : jsr oswrch
     rts
+
+.disable_auto_repeat: ; clobbers X
+    lda #11
+    ldx #0
+    jmp osbyte
 
 .spin:
     jmp spin
