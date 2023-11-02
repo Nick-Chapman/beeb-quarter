@@ -1,6 +1,6 @@
 
 cr
-.." Welcome to Quarter Forth." cr
+.." Welcome to Quarter Forth on the BBC." cr
 cr
 
 ( Need tools for these... )

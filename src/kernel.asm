@@ -23,13 +23,14 @@ org &0
 .embeddedPtr skip 2
 .msgPtr skip 2
 
+;; TODO: share 0-page slots which only need to live for the duration of a given prim
 ;;for multiply and divide
 .num1 skip 2
 .num2 skip 2
 .result skip 4
 .remainder skip 2
 
-;guard screenStart
+;guard screenStart ;; TODO: reinstate when we avoid embedded forth text
 org kernelStart
 
 .start:
@@ -38,6 +39,8 @@ org kernelStart
 .echo_enabled equb Echo ; controls echo in readChar
 .is_startup_complete equb 0 ; controls crash-only-during-startup
 
+
+;;; TODO: move multiply/divide routines to their use by forth prims
 .multiply: ; num1*num2 -> result
     {
     ;; A holds result+3.
@@ -96,8 +99,7 @@ org kernelStart
     rts
     }
 
-
-;;; just for dev/debug
+;;; just for dev/debug ;; TODO: remove
 .printHexA: { ;; clobbers A
     sta mod1+1
     sta mod2+1
@@ -125,6 +127,8 @@ org kernelStart
 ;;; The hi-byte is always deeper in the stack than the lo-byte, so:
 ;;; When pushing (pushA): push hi; push lo.
 ;;; When popping (popA): pop lo; pop hi.
+
+;;; TODO: detect stack underflow/overflow
 
 PS = &90
 
@@ -212,6 +216,9 @@ endmacro
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+;;; TODO: switch off auto repeat at startup, so can type when b-em is at 10x speed
+;;; TODO: flip initial BBC caps lock state to be unset
+
 .main: {
     ldx #0
     jsr cls
@@ -286,7 +293,7 @@ equw name, PREV : equb 0
 endmacro
 
 .zeroName: equs 0
-macro xdefword NAME,PREV ; NAME ignored. def wont be found ;; TODO: kill when unused
+macro xdefword NAME,PREV ;; TODO: complete all prim impls; then remove this.
 equw zeroName, PREV : equb HiddenFlag
 endmacro
 
@@ -443,7 +450,7 @@ defword "xor"                           , d19:d20=*
     inx : inx
     rts
 
-xdefword "/2"                            , d20:d21=*
+xdefword "/2"                            , d20:d21=* ;; TODO: needed for examples
 
 defword "+"                             , d21:d22=*
 	;; ( numP numQ -- num )
@@ -472,12 +479,13 @@ defword "-"                             , d22:d23=*
     rts
 
 defword "*"                             , d23:d24=*
-    jsr _umx
+    jsr _um_star
     jsr _swap
     jsr _drop
     rts
 
-._umx:
+;;; TODO: expose as "um*" -- unsigned multiple with double-width result
+._um_star:
     ;; ( p q -- p*q[hi] p*q[lo] )
     lda PS+3, x
     sta num1+1
@@ -526,6 +534,7 @@ defword "/mod"                          , d24:d25=*
 defword "<"                             , d25:d26=*
 	;; ( numP numQ -- bool )
 ._less_than: {
+    ;; TODO: fix for signed behaviour, as required by regression.f
     lda PS+3, x ; PH
     cmp PS+1, x ; QH
 	bcc less
@@ -1022,11 +1031,17 @@ assert ((dispatch_table_end - dispatch_table) = 256)
 print "kernel size: &", STR$~(*-start)
 
 .here_start:
+;;; TODO: include offline compiled image instead of embedded forth text
 print "here_start: &", STR$~(here_start)
 
 .embedded:
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
+    ;;incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
+    ;;incbin "../quarter-forth/f/regression.f" ;; TODO. (needs "x" needed defined by tools)
+    ;;incbin "../quarter-forth/f/examples.f" ;; TODO also needs "x". make fib work!
+    ;;incbin "../quarter-forth/f/primes.f" ;; TODO try
+    ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this!
     incbin "bbc-start.f"
     equb 0
 
