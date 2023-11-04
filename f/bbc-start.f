@@ -12,6 +12,7 @@ cr
 caps-off
 ( disable-auto-repeat ) ( so we type even at 10x emulation speed )
 disable-cursor-edit
+disable-escape
 
 startup-is-complete
 

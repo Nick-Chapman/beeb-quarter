@@ -1,5 +1,7 @@
 .." Loading bbc" cr
 
+: disable-escape  229 1 0 fx ; ( make it produce code &1B )
+
 : disable-auto-repeat 11 0 0 fx ;
 : enable-auto-repeat 11 50 0 fx ; ( 1 sec delay )
 
