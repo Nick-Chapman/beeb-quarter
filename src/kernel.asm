@@ -374,7 +374,6 @@ defword "rsp0"                          , d9:d10=*
     rts
 
 defword "as-num"                        , d10:d11=*
-    stop "as-num"
     rts
 
 defword "dup"                           , d11:d12=*
