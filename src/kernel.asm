@@ -1128,11 +1128,12 @@ print "here:  &", STR$~(*)
     ;; TODO: read from .list file
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
-    incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502 ; dump crashes
+    incbin "f/bbc-params.f"
+    incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
     ;incbin "../quarter-forth/f/regression.f"
     incbin "../quarter-forth/f/examples.f"
     ;incbin "../quarter-forth/f/primes.f"
-    incbin "../quarter-forth/f/buffer.f" ;; TODO want this! needs c!
+    incbin "../quarter-forth/f/buffer.f"
     incbin "f/bbc.f"
     incbin "f/bbc-start.f"
     equb 0
