@@ -282,6 +282,7 @@ endmacro
 macro defword NAME,PREV
 .name: equs NAME, 0
 equw name, PREV : equb 0
+;;print NAME, ": &", STR$~(*) ;; print address of primitive words
 endmacro
 
 .zeroName: equs 0
@@ -889,17 +890,15 @@ defword "key"                           , d50:d51=*
     pushA
     jsr readChar
     pushA
-    ;;cmp #';'
-    ;;{ bne no : txa : jsr printHexA : .no }
     rts
 
 xdefword "set-key"                       , d51:d52=*
 
 defword "get-key"                       , d52:d53=*
-    ;; TODO: is this right?
-    lda _key+1
+    ;; ( -- xt )
+    lda #HI(_key)
     pushA
-    lda _key
+    lda #LO(_key)
     pushA
     rts
 
