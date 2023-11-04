@@ -4,3 +4,13 @@
 
 hex 7c00 decimal
 constant himem
+
+32
+constant call-op-code
+
+96
+constant ret-op-code
+
+: @call
+@
+;

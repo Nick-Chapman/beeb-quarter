@@ -1117,10 +1117,10 @@ print "here:  &", STR$~(*)
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
     incbin "f/bbc-params.f"
-    incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502
-    ;incbin "../quarter-forth/f/regression.f"
+    incbin "../quarter-forth/f/tools.f"
+    incbin "../quarter-forth/f/regression.f"
     incbin "../quarter-forth/f/examples.f"
-    ;incbin "../quarter-forth/f/primes.f"
+    incbin "../quarter-forth/f/primes.f"
     incbin "../quarter-forth/f/buffer.f"
     incbin "f/bbc.f"
     incbin "f/bbc-start.f"
