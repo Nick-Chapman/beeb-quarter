@@ -4,9 +4,9 @@ echo-off
 
 cr
 .." Welcome to Quarter Forth on the BBC." cr
+here .hex cr
 cr
 
-( mem cr ) ( Number makes no sense for BBC. )
 .?stack
 
 caps-off

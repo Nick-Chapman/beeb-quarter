@@ -1,5 +1,4 @@
 Echo = FALSE ;; initial state of echo-enabled
-Mode = 7 ;; Can't use Mode0. We have reached embedded text in the screen area.
 
 ImmediateFlag = &40
 HiddenFlag = &80
@@ -13,7 +12,7 @@ osnewl = &ffe7
 oswrch = &ffee
 osbyte = &fff4
 
-kernelStart = &1900 ;; 1100 NO, 1200 OK
+kernelStart = &1200
 screenStart = &3000
 
 guard &12
@@ -34,6 +33,7 @@ org &0
 ;guard screenStart ;; TODO: reinstate when we avoid embedded forth text
 org kernelStart
 
+print "start: &", STR$~(*)
 .start:
     jmp main
 
@@ -929,12 +929,7 @@ defword "cr"                            , d57:d58=*
     ;; ( -- )
     jmp osnewl
 
-defword "cls"                           , d58:d59=*
-._cls:
-    lda #22 : jsr oswrch
-    lda #Mode : jsr oswrch
-    rts
-
+d59 = d58
 
 defword "key?"                          , d59:d60=*
     stop "key?"
@@ -956,12 +951,17 @@ defword "fx"                            , d60:d61=*
     rts
     }
 
-last = d61
+defword "mode"                            , d61:d62=*
+    ;; ( n -- )
+    lda #22 : jsr oswrch
+    lda PS, x : jsr oswrch
+    inx
+    rts
+
+last = d62
 .latestVar equw last
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-print "kernel size (sans dispatch table): &", STR$~(*-start)
 
 U = 0
 .dispatch_table:        ; hex 'char'
@@ -1097,11 +1097,9 @@ equw U                  ; 7f DEL
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
-print "kernel size: &", STR$~(*-start)
-
 .here_start:
 ;;; TODO: include offline compiled image instead of embedded forth text
-print "here_start: &", STR$~(here_start)
+print "here:  &", STR$~(*)
 
 .embedded:
     incbin "../quarter-forth/f/quarter.q"
@@ -1115,10 +1113,8 @@ print "here_start: &", STR$~(here_start)
     incbin "f/bbc-start.f"
     equb 0
 
-print "embedded size: &", STR$~(*-embedded)
-
 .end:
 
-print "end (after embedded): &", STR$~(end)
+print "embed: &", STR$~(*)
 
 save "Code", start, end
