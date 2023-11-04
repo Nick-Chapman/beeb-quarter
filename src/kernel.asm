@@ -457,14 +457,12 @@ defword "xor"                           , d19:d20=*
 
 defword "/2"                            , d20:d21=*
     ;; ( num -- num )
-    ;; TODO: direct implementation using asr/ror
-    lda #0
-    pushA
-    lda #2
-    pushA
-    jsr _div_mod
-    jsr _swap
-    jsr _drop
+    lda PS+1, x
+    lsr a
+    sta PS+1, x
+    lda PS, x
+    ror a
+    sta PS, x
     rts
 
 defword "+"                             , d21:d22=*
