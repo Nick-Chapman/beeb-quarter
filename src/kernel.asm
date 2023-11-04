@@ -218,6 +218,8 @@ endmacro
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 .main: {
+    tsx
+    stx smc_rsp0+1
     ldx #0
     copy16i embedded, embeddedPtr
     copy16i here_start, hereVar
@@ -366,11 +368,21 @@ defword "sp0"                           , d7:d8=*
     rts
 
 defword "rsp"                           , d8:d9=*
-    stop "rsp"
+    lda #0
+    pushA
+    stx SMC_x +1
+    tsx
+    stx SMC_sp +1
+    .SMC_x ldx #&33
+    .SMC_sp lda #&44
+    pushA
     rts
 
 defword "rsp0"                          , d9:d10=*
-    stop "rsp0"
+    lda #0
+    pushA
+    .smc_rsp0 lda #33
+    pushA
     rts
 
 defword "as-num"                        , d10:d11=*
