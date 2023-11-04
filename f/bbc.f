@@ -1,6 +1,7 @@
 .." Loading bbc" cr
 
 : disable-auto-repeat 11 0 0 fx ;
+: enable-auto-repeat 11 50 0 fx ; ( 1 sec delay )
 
 : disable-cursor-edit  4 1 0 fx ;
 : enable-cursor-edit   4 0 0 fx ;

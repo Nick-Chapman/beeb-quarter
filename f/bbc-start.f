@@ -4,13 +4,13 @@ echo-off
 
 cr
 .." Welcome to Quarter Forth on the BBC." cr
-here .hex cr
+.." here:&" here .hex cr
 cr
 
 .?stack
 
 caps-off
-disable-auto-repeat ( so we type even at 10x emulation speed )
+( disable-auto-repeat ) ( so we type even at 10x emulation speed )
 disable-cursor-edit
 
 startup-is-complete

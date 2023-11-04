@@ -619,15 +619,14 @@ defword "@"                             , d27:d28=*
 defword "!"                             , d28:d29=*
     ;; ( value addr -- )
 ._store:
-    popA ;lo-addr
+    popA
     sta temp
-    popA ;hi-addr
+    popA
     sta temp+1
-
-    popA ;lo-value
+    popA
     ldy #0
     sta (temp),y
-    popA ;hi-value
+    popA
     ldy #1
     sta (temp),y
     rts
@@ -644,7 +643,14 @@ defword "c@"                            , d29:d30=*
 
 defword "c!"                            , d30:d31=*
     ;; ( char addr -- )
-    stop "c!"
+    popA
+    sta temp
+    popA
+    sta temp+1
+    popA
+    ldy #0
+    sta (temp),y
+    inx
     rts
 
 defword "here-pointer"                  , d31:d32=*
@@ -884,25 +890,42 @@ defword "latest"                        , d49:d50=*
     rts
 
 defword "key"                           , d50:d51=*
-    ;; ( -- char )
 ._key:
+    ;; ( -- char )
+	jmp (key_indirection)
+
+.key_indirection equw _key0
+
+._key0:
     lda #0
     pushA
     jsr readChar
     pushA
     rts
 
-xdefword "set-key"                       , d51:d52=*
+defword "set-key"                       , d51:d52=*
+    ;; ( xt -- )
+    popA
+    sta key_indirection
+    popA
+    sta key_indirection+1
+    rts
 
 defword "get-key"                       , d52:d53=*
     ;; ( -- xt )
-    lda #HI(_key)
+	lda key_indirection+1
     pushA
-    lda #LO(_key)
+	lda key_indirection
     pushA
     rts
 
-xdefword "echo-enabled"                  , d53:d54=*
+defword "echo-enabled"                  , d53:d54=*
+    ;; ( -- addr )
+    lda #HI(echo_enabled)
+    pushA
+    lda #LO(echo_enabled)
+    pushA
+    rts
 
 defword "echo-off"                      , d54:d55=*
     ;; ( -- )
@@ -1102,13 +1125,14 @@ assert ((dispatch_table_end - dispatch_table) = 256)
 print "here:  &", STR$~(*)
 
 .embedded:
+    ;; TODO: read from .list file
     incbin "../quarter-forth/f/quarter.q"
     incbin "../quarter-forth/f/forth.f"
     incbin "../quarter-forth/f/tools.f" ;; TODO fix disassembly for 6502 ; dump crashes
-    incbin "../quarter-forth/f/regression.f"
+    ;incbin "../quarter-forth/f/regression.f"
     incbin "../quarter-forth/f/examples.f"
-    incbin "../quarter-forth/f/primes.f"
-    ;;incbin "../quarter-forth/f/buffer.f" ;; TODO want this! needs c!
+    ;incbin "../quarter-forth/f/primes.f"
+    incbin "../quarter-forth/f/buffer.f" ;; TODO want this! needs c!
     incbin "f/bbc.f"
     incbin "f/bbc-start.f"
     equb 0
