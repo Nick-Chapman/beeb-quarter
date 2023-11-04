@@ -30,7 +30,6 @@ org &0
 .result skip 4
 .remainder skip 2
 
-;guard screenStart ;; TODO: reinstate when we avoid embedded forth text
 org kernelStart
 
 print "start: &", STR$~(*)
@@ -99,24 +98,6 @@ print "start: &", STR$~(*)
     bne loop
     rts
     }
-
-;;; just for dev/debug ;; TODO: remove
-.printHexA: { ;; clobbers A
-    sta mod1+1
-    sta mod2+1
-    txa : pha ; save X (killing A)
-    lda #',' : jsr osasci
-    .mod1 lda #&33 ; SMC
-    and #&f0 : lsr a : lsr a : lsr a : lsr a : tax
-    lda digits,x
-    jsr osasci
-    .mod2 lda #&44 ; SMC
-    and #&f : tax
-    lda digits,x
-    jsr osasci
-    pla : tax ; restore X (killing A)
-    rts
-.digits EQUS "0123456789abcdef" }
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Parameter Stack (PS)
@@ -208,9 +189,9 @@ macro newline ;; no clobber A
     pha : jsr osnewl : pla
 endmacro
 
-macro stop message ;; TODO: rename todo
+macro todo message
     jsr osnewl
-    puts "stop:"
+    puts "todo:"
     puts message : newline
     jmp spin
 endmacro
@@ -288,11 +269,6 @@ equw name, PREV : equb 0
 ;;print NAME, ": &", STR$~(*) ;; print address of primitive words
 endmacro
 
-.zeroName: equs 0
-macro xdefword NAME,PREV ;; TODO: complete all prim impls; then remove this.
-equw zeroName, PREV : equb HiddenFlag
-endmacro
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 d0 = 0
@@ -307,7 +283,7 @@ d0 = 0
     sta dispatch_table+1,y
     rts
 
-xdefword "dispatch"                      , d0:d1=*
+defword "dispatch"                      , d0:d1=*
 ._dispatch: {
     popA
     sta mod+1 ; for unset error
@@ -328,15 +304,19 @@ xdefword "dispatch"                      , d0:d1=*
     jmp spin
     }
 
-xdefword "reset"                         , d1:d2=*
+d2=d1
+
 defword "bye"                           , d2:d3=*
     .smc_bye ldx #33
     txs
     rts
 
 defword "crash"                         , d3:d4=*
-    stop "crash"
-    rts
+._crash:
+    newline
+    puts "we have crashed!"
+    newline
+    jmp spin
 
 defword "startup-is-complete"           , d4:d5=*
     lda #1
@@ -346,12 +326,7 @@ defword "startup-is-complete"           , d4:d5=*
 defword "crash-only-during-startup"     , d5:d6=*
 ._crash_startup: {
     lda is_startup_complete
-    bne no
-    newline
-    puts "crash-during-startup"
-    newline
-    jsr spin
-.no:
+    beq _crash
     rts
     }
 
@@ -862,7 +837,7 @@ defword "immediate^"                    , d46:d47=*
     lda (temp),y
     eor #ImmediateFlag
     sta (temp),y
-    inx : inx ; TODO: was missing. bug!
+    inx : inx
     rts
 
 defword "hidden^"                       , d47:d48=*
@@ -873,7 +848,7 @@ defword "hidden^"                       , d47:d48=*
     lda (temp),y
     eor #HiddenFlag
     sta (temp),y
-    inx : inx  ; TODO: was missing. bug!
+    inx : inx
     rts
 
 defword "entry,"                        , d48:d49=*
@@ -970,7 +945,7 @@ defword "cr"                            , d57:d58=*
 d59 = d58
 
 defword "key?"                          , d59:d60=*
-    stop "key?"
+    todo "key?"
     rts
 
 ;;; make "fx" call to MOS, using "osbyte", passing arguments in A/X/Y
