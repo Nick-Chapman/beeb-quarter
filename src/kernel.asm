@@ -220,6 +220,7 @@ endmacro
 .main: {
     tsx
     stx smc_rsp0+1
+    stx smc_bye+1
     ldx #0
     copy16i embedded, embeddedPtr
     copy16i here_start, hereVar
@@ -328,7 +329,10 @@ xdefword "dispatch"                      , d0:d1=*
     }
 
 xdefword "reset"                         , d1:d2=*
-xdefword "bye"                           , d2:d3=*
+defword "bye"                           , d2:d3=*
+    .smc_bye ldx #33
+    txs
+    rts
 
 defword "crash"                         , d3:d4=*
     stop "crash"
