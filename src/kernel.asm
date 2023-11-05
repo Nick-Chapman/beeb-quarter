@@ -1113,17 +1113,7 @@ assert ((dispatch_table_end - dispatch_table) = 256)
 print "here:  &", STR$~(*)
 
 .embedded:
-    ;; TODO: read from .list file
-    incbin "../quarter-forth/f/quarter.q"
-    incbin "../quarter-forth/f/forth.f"
-    incbin "f/bbc-params.f"
-    incbin "../quarter-forth/f/tools.f"
-    incbin "../quarter-forth/f/regression.f"
-    incbin "../quarter-forth/f/examples.f"
-    incbin "../quarter-forth/f/primes.f"
-    incbin "../quarter-forth/f/buffer.f"
-    incbin "f/bbc.f"
-    incbin "f/bbc-start.f"
+    incbin FORTH
     equb 0
 
 .end:

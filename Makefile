@@ -1,20 +1,25 @@
 
-top: build-all
+top: build-full
 
-run: _build run-kernel
+run: run-full
 
+kernel = src/kernel.asm
 quarter = ../quarter-forth
 
-units = $(patsubst src/%.asm, %, $(wildcard src/*.asm))
-ssds = $(patsubst %, _build/%.ssd, $(units))
+build-%: _build/%.ssd
+	@ echo -n
 
-build-all: _build $(ssds)
+run-%: _build _build/%.ssd
+	b-em -sp9 _build/$*.ssd
 
-run-%: _build/%.ssd
-	b-em -sp9 $< # run emulator at 10x speed
+.PRECIOUS:_build/%.ssd
+_build/%.ssd: _build _build/%.f $(kernel) Makefile
+	@ echo Building $(kernel)
+	@ beebasm -S FORTH=_build/$*.f -w -i $(kernel) -do $@ -boot Code || rm $@
 
-_build/%.ssd: src/%.asm Makefile $(wildcard $(quarter)/f/*) $(wildcard f/*.f)
-	@ echo Building $<
-	@ beebasm -w -i $< -do $@ -boot Code || rm $@
+.PRECIOUS:_build/%.f
+_build/%.f : %.list $(wildcard f/*) $(wildcard $(quarter)/f/*) Makefile
+	@ echo Combining Forth files: $<
+	@ bash -c 'cat $< | sed s/#.*// | xargs cat > $@' || rm -f $@
 
 _build: ; @mkdir -p $@
