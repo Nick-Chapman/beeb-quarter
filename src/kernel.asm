@@ -940,7 +940,14 @@ defword "cr"                            , d57:d58=*
     ;; ( -- )
     jmp osnewl
 
-d59 = d58
+defword "time"                          , d58:d59=*
+    ;; ( -- u u )
+    lda #0 ;; TODO : real impl
+    pushA
+    pushA
+    pushA
+    pushA
+    rts
 
 defword "key?"                          , d59:d60=*
     todo "key?"
