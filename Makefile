@@ -1,7 +1,8 @@
 
-top: build-full
+default = bbc
 
-run: run-full
+top: build-$(default)
+run: run-$(default)
 
 kernel = src/kernel.asm
 quarter = ../quarter-forth
@@ -13,13 +14,13 @@ run-%: _build _build/%.ssd
 	b-em -sp9 _build/$*.ssd
 
 .PRECIOUS:_build/%.ssd
-_build/%.ssd: _build _build/%.f $(kernel) Makefile
+_build/%.ssd: _build _build/%.f $(kernel)
 	@ echo Building $(kernel)
 	@ beebasm -S FORTH=_build/$*.f -w -i $(kernel) -do $@ -boot Code || rm $@
 
 .PRECIOUS:_build/%.f
-_build/%.f : %.list $(wildcard f/*) $(wildcard $(quarter)/f/*) Makefile
+_build/%.f : $(quarter)/%.list $(wildcard f/*) $(wildcard $(quarter)/f/*)
 	@ echo Combining Forth files: $<
-	@ bash -c 'cat $< | sed s/#.*// | xargs cat > $@' || rm -f $@
+	@ bash -c '(cd $(quarter); cat $< | sed s/#.*// | xargs cat) > $@' || rm -f $@
 
 _build: ; @mkdir -p $@
