@@ -881,7 +881,7 @@ defword "latest"                        , d49:d50=*
 defword "key"                           , d50:d51=*
 ._key:
     ;; ( -- char )
-	jmp (key_indirection)
+    jmp (key_indirection)
 
 ._key0:
     lda #0
@@ -900,9 +900,9 @@ defword "set-key"                       , d51:d52=*
 
 defword "get-key"                       , d52:d53=*
     ;; ( -- xt )
-	lda key_indirection+1
+    lda key_indirection+1
     pushA
-	lda key_indirection
+    lda key_indirection
     pushA
     rts
 
