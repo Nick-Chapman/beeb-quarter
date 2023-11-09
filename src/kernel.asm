@@ -30,8 +30,6 @@ num2 = temp2
 result = temp3wide
 remainder = temp3wide ; doesn't need to be wide
 
-.hereVar skip 2
-
 org kernelStart
 
 print "start: &", STR$~(*)
@@ -166,7 +164,11 @@ macro incWord V
 endmacro
 
 macro commaHere ; takes value in A; Y needs to be set to offset
-    sta (hereVar), y
+    sta SMC+1
+    lda hereVar : sta temp
+    lda hereVar+1 : sta temp+1
+    .SMC lda #33
+    sta (temp), y
     ;;jsr debug_comma
 endmacro
 
@@ -1117,6 +1119,7 @@ assert ((dispatch_table_end - dispatch_table) = 256)
 
 ;;; variables which contained in the main heap
 
+.hereVar equw here_start
 .key_indirection equw _key0
 .latestVar equw last
 .echo_enabled equw Echo ; controls echo in readChar
