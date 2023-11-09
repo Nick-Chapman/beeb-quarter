@@ -18,8 +18,10 @@ _build/%.ssd: _build _build/%.f $(kernel)
 	@ echo Building $(kernel)
 	@ beebasm -S FORTH=_build/$*.f -w -i $(kernel) -do $@ -boot Code || rm $@
 
+forth = $(wildcard $(quarter)/*.f) $(wildcard $(quarter)/f/*)
+
 .PRECIOUS:_build/%.f
-_build/%.f : $(quarter)/%.list $(wildcard f/*) $(wildcard $(quarter)/f/*)
+_build/%.f : $(quarter)/%.list $(forth)
 	@ echo Combining Forth files: $<
 	@ bash -c '(cd $(quarter); cat $< | sed s/#.*// | xargs cat) > $@' || rm -f $@
 
