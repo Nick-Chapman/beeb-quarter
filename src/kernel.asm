@@ -38,9 +38,6 @@ print "start: &", STR$~(*)
 .start:
     jmp main
 
-.echo_enabled equb Echo ; controls echo in readChar
-.is_startup_complete equb 0 ; controls crash-only-during-startup
-
 
 ;;; TODO: move multiply/divide routines to their use by forth prims
 .multiply: ; num1*num2 -> result
@@ -884,8 +881,6 @@ defword "key"                           , d50:d51=*
     ;; ( -- char )
 	jmp (key_indirection)
 
-.key_indirection equw _key0
-
 ._key0:
     lda #0
     pushA
@@ -979,9 +974,12 @@ defword "mode"                            , d61:d62=*
     rts
 
 last = d62
-.latestVar equw last
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; The restorable heap image starts here
+;;; TODO: goal is for the heap to be replaced by an offline compiled image
+
+.heap:
 
 U = 0
 .dispatch_table:        ; hex 'char'
@@ -1117,8 +1115,16 @@ equw U                  ; 7f DEL
 .dispatch_table_end
 assert ((dispatch_table_end - dispatch_table) = 256)
 
+;;; variables which contained in the main heap
+
+.key_indirection equw _key0
+.latestVar equw last
+.echo_enabled equw Echo ; controls echo in readChar
+.is_startup_complete equb 0 ; controls crash-only-during-startup
+
 .here_start:
-;;; TODO: include offline compiled image instead of embedded forth text
+
+print "heap:  &", STR$~(heap)
 print "here:  &", STR$~(*)
 
 .embedded:
