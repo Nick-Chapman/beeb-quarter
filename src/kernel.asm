@@ -18,17 +18,19 @@ screenStart = &3000
 guard &12
 org &0
 
-.hereVar skip 2
-.temp skip 2 ; used by _lit & elsewhere
 .embeddedPtr skip 2
-.msgPtr skip 2
+.temp skip 2 ; used by _lit & elsewhere
+.temp2 skip 2
+.temp3wide skip 4
 
-;; TODO: share 0-page slots which only need to live for the duration of a given prim
-;;for multiply and divide
-.num1 skip 2
-.num2 skip 2
-.result skip 4
-.remainder skip 2
+msgPtr = temp
+
+num1 = temp
+num2 = temp2
+result = temp3wide
+remainder = temp3wide ; doesn't need to be wide
+
+.hereVar skip 2
 
 org kernelStart
 
