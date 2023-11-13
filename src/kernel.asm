@@ -10,6 +10,7 @@ osrdch = &ffe0
 osasci = &ffe3
 osnewl = &ffe7
 oswrch = &ffee
+osword = &fff1
 osbyte = &fff4
 
 kernelStart = &1200
@@ -975,7 +976,28 @@ defword "mode"                            , d61:d62=*
     inx
     rts
 
-last = d62
+defword "sound"                           , d62:d63=*
+	;; ( duration pitch amplitude channel -- )
+    {
+    popA : sta block+0
+    popA : sta block+1
+    popA : sta block+2
+    popA : sta block+3
+    popA : sta block+4
+    popA : sta block+5
+    popA : sta block+6
+    popA : sta block+7
+
+    stx SMC_oldX +1
+	ldx #LO(block)
+	ldy #HI(block)
+    lda #7
+	jsr osword
+    .SMC_oldX ldx #&55
+    rts
+.block equw 0, 0, 0, 0 }
+
+last = d63
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; The restorable heap image starts here
