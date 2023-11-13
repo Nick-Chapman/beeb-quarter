@@ -977,25 +977,18 @@ defword "mode"                            , d61:d62=*
     rts
 
 defword "sound"                           , d62:d63=*
-	;; ( duration pitch amplitude channel -- )
-    {
-    popA : sta block+0
-    popA : sta block+1
-    popA : sta block+2
-    popA : sta block+3
-    popA : sta block+4
-    popA : sta block+5
-    popA : sta block+6
-    popA : sta block+7
-
+    ;; ( duration pitch amplitude channel -- )
+    txa
     stx SMC_oldX +1
-	ldx #LO(block)
-	ldy #HI(block)
+    clc : adc #PS
+    tax
+    ldy #0
     lda #7
-	jsr osword
-    .SMC_oldX ldx #&55
+    jsr osword
+    .SMC_oldX lda #&55
+    clc : adc #8
+    tax
     rts
-.block equw 0, 0, 0, 0 }
 
 last = d63
 
